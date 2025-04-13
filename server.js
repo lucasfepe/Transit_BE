@@ -1,14 +1,32 @@
-import express from 'express';
-import cors from 'cors';
-import playgroundEquipmentRoutes from './routes/playgroundEquipmentRoutes.js';
+const express = require('express');
+const mongodb = require('./db.js');
+const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-app.use(cors({ origin: 'http://localhost:5173' }));
+
+const port = process.env.PORT || 3000;
+
+
+app.use(cors({
+    origin: '*',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+
+
 app.use(express.json());
 
-app.use('/api/playgroundEquipment', playgroundEquipmentRoutes);
+mongodb.initDb()
+    .then(() => {
+        app.use('/', require('./routes'));
 
-app.listen(PORT, () => {
-    console.log('Server listening on port ' + PORT);
-})
+        app.listen(port, () => {
+            console.log(`Server is running on port ${port}`);
+        });
+    })
+    .catch(err => {
+        console.error('Failed to initialize database:', err);
+        process.exit(1);
+    });
