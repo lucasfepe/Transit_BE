@@ -5,7 +5,7 @@ class TripMappingController {
     async getTripMappings(req, res, next) {
         try {
             const { tripIds } = req.body;
-
+            
             
             if (!Array.isArray(tripIds) || tripIds.length === 0) {
                 const error = new Error('Invalid trip IDs');
