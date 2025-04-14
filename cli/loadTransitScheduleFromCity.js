@@ -1,5 +1,5 @@
 import { initDb, disconnectDb } from "../db.js";
-import { createTrip, findTripByTripId } from "../models/Trip.js";
+import { createTrip, findTripByTripId } from "../services/trip.service.js";
 import JSZip from "jszip";
 import { parse } from "csv-parse/sync";
 

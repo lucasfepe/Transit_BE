@@ -1,6 +1,8 @@
-const router = require('express').Router();
-const tripMappingController = require('../controllers/tripMapping.controller');
+import { Router } from 'express';
+import tripMappingController from '../controllers/tripMapping.controller.js';
 
-router.post('/tripMappings', tripMappingController.getTripMappings);
+const router = Router();
 
-module.exports = router;
+router.post('/', tripMappingController.getTripMappings);
+
+export default router;

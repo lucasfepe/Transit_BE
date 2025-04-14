@@ -1,6 +1,7 @@
-const express = require('express');
-const mongodb = require('./db.js');
-const cors = require('cors');
+import express from 'express'
+import cors from 'cors'
+import * as mongodb from './db.js'
+import routes from './routes/index.js'
 
 const app = express();
 
@@ -20,9 +21,9 @@ app.use(express.json());
 
 mongodb.initDb()
     .then(() => {
-        app.use('/', require('./routes'));
+        app.use('/', routes);
 
-        app.listen(port, () => {
+        app.listen(port, '0.0.0.0',() => {
             console.log(`Server is running on port ${port}`);
         });
     })

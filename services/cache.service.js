@@ -1,11 +1,18 @@
-const NodeCache = require('node-cache');
+// cache.service.js
+import NodeCache from 'node-cache';
 
 class CacheService {
     constructor() {
-        // Create cache with 24 hour TTL (in seconds)
-        this.cache = new NodeCache({ 
+        // Cache for route mappings
+        this.routeCache = new NodeCache({ 
             stdTTL: 24 * 60 * 60,
-            checkperiod: 60 * 60 // Check for expired keys every hour
+            checkperiod: 60 * 60
+        });
+
+        // Cache for trip to route mapping
+        this.tripToRouteCache = new NodeCache({ 
+            stdTTL: 24 * 60 * 60,
+            checkperiod: 60 * 60
         });
 
         // Bind methods
@@ -15,35 +22,51 @@ class CacheService {
     }
 
     getTripMapping(tripId) {
-        return this.cache.get(tripId);
+        // Get route_id for this trip
+        const routeId = this.tripToRouteCache.get(String(tripId));
+        if (!routeId) return null;
+        
+        // Get mapping for this route
+        return this.routeCache.get(String(routeId));
     }
 
-    setTripMapping(tripId, mapping) {
-        return this.cache.set(tripId, mapping);
+    setTripMapping(routeId, mapping) {
+        // Store the route mapping
+        this.routeCache.set(String(routeId), mapping);
+        
+        // Store trip to route mappings
+        mapping.trip_ids.forEach(tripId => {
+            this.tripToRouteCache.set(String(tripId), routeId);
+        });
+        
+        return true;
     }
 
     getMultipleTripMappings(tripIds) {
-        const cached = new Map();
+        const cached = {};
         const uncached = [];
 
         tripIds.forEach(tripId => {
             const mapping = this.getTripMapping(tripId);
             if (mapping) {
-                cached.set(tripId, mapping);
+                const routeId = this.tripToRouteCache.get(String(tripId));
+                cached[routeId] = mapping;
             } else {
                 uncached.push(tripId);
             }
         });
 
         return {
-            cached: Array.from(cached.values()),
+            cached,
             uncachedTripIds: uncached
         };
     }
 
     clearCache() {
-        this.cache.flushAll();
+        this.routeCache.flushAll();
+        this.tripToRouteCache.flushAll();
     }
 }
 
-module.exports = new CacheService();
+const cacheService = new CacheService();
+export default cacheService;

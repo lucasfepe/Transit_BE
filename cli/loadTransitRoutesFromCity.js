@@ -3,7 +3,7 @@ import { initDb, disconnectDb } from "../db.js";
 import {
   createTransitRoute,
   findTransitRouteByRouteShortName,
-} from "../models/Route.js";
+} from "../services/route.service.js";
 
 async function processRoutes() {
   try {

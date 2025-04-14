@@ -1,10 +1,10 @@
-const router = require('express').Router();
+import { Router } from 'express';
+import tripMappingRoutes from './tripMapping.routes.js';
+import adminRoutes from './admin.routes.js';
 
-router.use('/route', require('./route'));
-router.use('/stop', require('./stop'));
-router.use('/stoptime', require('./stopTime'));
-router.use('/auth', require('./auth'));
-router.use('/routearchive', require('./routeArchive'));
-router.use('/trip', require('./trip'));
+const router = Router();
 
-module.exports = router;
+router.use('/tripmapping', tripMappingRoutes);
+router.use('/admin', adminRoutes);
+
+export default router;

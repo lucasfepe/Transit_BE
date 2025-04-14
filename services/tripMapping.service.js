@@ -1,5 +1,7 @@
-const mongoose = require('mongoose');
-const cacheService = require('./cacheService');
+// tripMapping.service.js
+import cacheService from './cache.service.js';
+import { getTripModel } from '../models/Trip.js';
+import { getRouteModel } from '../models/Route.js';
 
 class TripMappingService {
     async getMappingsForTrips(tripIds) {
@@ -15,55 +17,51 @@ class TripMappingService {
         const dbMappings = await this.fetchMappingsFromDb(uncachedTripIds);
 
         // Cache the new mappings
-        dbMappings.forEach(mapping => {
-            cacheService.setTripMapping(mapping.trip_id, mapping);
+        Object.entries(dbMappings).forEach(([route_id, mapping]) => {
+            cacheService.setTripMapping(route_id, mapping);
         });
 
-        // Return combined results
-        return [...cached, ...dbMappings];
+        // Merge cached and new mappings
+        return { ...cached, ...dbMappings };
     }
 
     async fetchMappingsFromDb(tripIds) {
-        return await Trip.aggregate([
-            { 
-                $match: { 
-                    trip_id: { $in: tripIds } 
-                } 
-            },
-            {
-                $lookup: {
-                    from: 'routes',
-                    localField: 'route_id',
-                    foreignField: 'route_id',
-                    as: 'route'
-                }
-            },
-            {
-                $unwind: '$route'  // Converts route array to single object
-            },
-            {
-                $lookup: {
-                    from: 'shapes',
-                    localField: 'route.shape_id',
-                    foreignField: 'shape_id',
-                    as: 'shape'
-                }
-            },
-            {
-                $unwind: '$shape'  // Converts shape array to single object
-            },
-            {
-                $project: {
-                    trip_id: 1,
-                    route_id: '$route.route_id',
-                    route_name: '$route.route_name',
-                    shape: {
-                        shape_id: '$shape.shape_id',
-                        coordinates: '$shape.coordinates'
-                    }
-                }
+        const Trip = getTripModel();
+        const Route = getRouteModel();
+
+        // Get all trips in a single query - O(n)
+        const trips = await Trip.find({ 
+            trip_id: { $in: tripIds }
+        });
+
+        // Create a map of route_short_name to trip_ids - O(n)
+        const tripsByRoute = trips.reduce((acc, trip) => {
+            if (!acc[trip.route_id]) {
+                acc[trip.route_id] = {
+                    trip_ids: []
+                };
             }
-        ]);
+            acc[trip.route_id].trip_ids.push(trip.trip_id);
+            return acc;
+        }, {});
+
+        // Get all relevant routes in a single query - O(m) where m is number of unique routes
+        const routes = await Route.find({
+            route_short_name: { 
+                $in: Object.keys(tripsByRoute)
+            }
+        });
+
+        // Add shape data to our mapping - O(m)
+        routes.forEach(route => {
+            if (tripsByRoute[Number(route.route_short_name)]) {
+                tripsByRoute[Number(route.route_short_name)].shape = route.multilinestring.coordinates;
+            }
+        });
+
+        return tripsByRoute;
     }
 }
-module.exports = new TripMappingService();
+
+const tripMappingService = new TripMappingService();
+export default tripMappingService;

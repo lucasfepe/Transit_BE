@@ -14,7 +14,7 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const loaderFiles = [
-    // 'loadTransitRoutesFromCity.js',
+    'loadTransitRoutesFromCity.js',
     'loadTransitScheduleFromCity.js',
 ];
 
