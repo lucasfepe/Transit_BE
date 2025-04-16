@@ -1,70 +1,84 @@
-// cache.service.js
-import NodeCache from 'node-cache';
-
+// services/cache.service.js
 class CacheService {
     constructor() {
-        // Cache for route mappings
-        this.routeCache = new NodeCache({ 
-            stdTTL: 24 * 60 * 60,
-            checkperiod: 60 * 60
-        });
-
-        // Cache for trip to route mapping
-        this.tripToRouteCache = new NodeCache({ 
-            stdTTL: 24 * 60 * 60,
-            checkperiod: 60 * 60
-        });
-
-        // Bind methods
-        this.getTripMapping = this.getTripMapping.bind(this);
-        this.setTripMapping = this.setTripMapping.bind(this);
-        this.getMultipleTripMappings = this.getMultipleTripMappings.bind(this);
+        this.tripMappingCache = {}; // Full mappings with shapes and stops
+        this.lightMappingCache = {}; // Light mappings with just trip IDs
+        this.routeDetailsCache = {}; // Detailed route information
+        this.cacheTTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     }
 
-    getTripMapping(tripId) {
-        // Get route_id for this trip
-        const routeId = this.tripToRouteCache.get(String(tripId));
-        if (!routeId) return null;
-        
-        // Get mapping for this route
-        return this.routeCache.get(String(routeId));
-    }
-
-    setTripMapping(routeId, mapping) {
-        // Store the route mapping
-        this.routeCache.set(String(routeId), mapping);
-        
-        // Store trip to route mappings
-        mapping.trip_ids.forEach(tripId => {
-            this.tripToRouteCache.set(String(tripId), routeId);
-        });
-        
-        return true;
-    }
-
-    getMultipleTripMappings(tripIds) {
+    // Get multiple trip mappings (either light or full)
+    getMultipleTripMappings(tripIds, lightMode = false) {
+        const cache = lightMode ? this.lightMappingCache : this.tripMappingCache;
         const cached = {};
-        const uncached = [];
+        const uncachedTripIds = [];
 
+        // Check each trip ID
         tripIds.forEach(tripId => {
-            const mapping = this.getTripMapping(tripId);
-            if (mapping) {
-                const routeId = this.tripToRouteCache.get(String(tripId));
-                cached[routeId] = mapping;
-            } else {
-                uncached.push(tripId);
+            let found = false;
+
+            // Look through all routes in cache
+            for (const [routeId, mapping] of Object.entries(cache)) {
+                if (mapping.trip_ids.includes(Number(tripId))) {
+                    if (!cached[routeId]) {
+                        cached[routeId] = { ...mapping };
+                    }
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                uncachedTripIds.push(tripId);
             }
         });
 
-        return {
-            cached,
-            uncachedTripIds: uncached
+        return { cached, uncachedTripIds };
+    }
+
+    // Set trip mapping in cache (either light or full)
+    setTripMapping(routeId, mapping, lightMode = false) {
+        const cache = lightMode ? this.lightMappingCache : this.tripMappingCache;
+        cache[routeId] = {
+            ...mapping,
+            timestamp: Date.now()
         };
     }
 
+    // Get detailed route information
+    getRouteDetails(routeId) {
+        const cached = this.routeDetailsCache[routeId];
+
+        if (!cached) {
+            return null;
+        }
+
+        // Check if cache is still valid
+        if (Date.now() - cached.timestamp > this.cacheTTL) {
+            delete this.routeDetailsCache[routeId];
+            return null;
+        }
+
+        return {
+            route_id: routeId,
+            shape: cached.shape,
+            stops: cached.stops
+        };
+    }
+
+    // Set detailed route information
+    setRouteDetails(routeId, details) {
+        this.routeDetailsCache[routeId] = {
+            ...details,
+            timestamp: Date.now()
+        };
+    }
+
+    // Clear all caches
     clearCache() {
-        this.routeCache.flushAll();
-        this.tripToRouteCache.flushAll();
+        this.tripMappingCache = {};
+        this.lightMappingCache = {};
+        this.routeDetailsCache = {};
     }
 }
 
