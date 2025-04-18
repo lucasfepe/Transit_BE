@@ -1,8 +1,10 @@
 import { getRouteModel } from "../models/Route.js";
 
+// Conversion factor: 1 mile = 1609.34 meters
+const METERS_PER_MILE = 1609.34;
+
 export async function createTransitRoute(route) {
     const TransitRoutes = getRouteModel();
-
     return await TransitRoutes.create(route);
 }
 
@@ -26,21 +28,27 @@ export async function findTransitRouteByRouteShortName(route_short_name) {
     return transitRoute;
 }
 
-// In 1791, the metre was defined as 1 ten millionth the distance
-// between the north pole and the equator travelling through Paris.
-// 234 years later, Tony used this formula in a sofware development
-// class focused on geographic queries.
-const METERS_PER_DEGREE = 10000000 / 90;
+
+// Function to convert miles to meters
+function milesToMeters(miles) {
+  return miles * METERS_PER_MILE;
+}
+const METERS_PER_DEGREE = 10000000/90
 export async function findTransitRoutesNear(lat, lon, distanceM) {
+    console.log("d in m:",distanceM);
     const TransitRoutes = getRouteModel();
+    const distanceDegrees = distanceM / METERS_PER_DEGREE 
+    // Convert miles to meters
+    const distanceMeters = milesToMeters(distanceM);
+
     const transitRoutes = await TransitRoutes.find()
-        .where("shape")
+        .where("multilinestring")
         .near({
             center: {
                 type: "Point",
                 coordinates: [lon, lat],
             },
-            maxDistance: distanceM,
+            maxDistance: distanceM, // Use the converted distance
             spherical: true,
         });
 

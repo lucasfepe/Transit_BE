@@ -12,7 +12,7 @@ const distanceM = Number.parseFloat(process.argv[4])
 
 const transitRoutes = await findTransitRoutesNear(lat, lon, distanceM)
 for (const route of transitRoutes) {
-    console.log(route.route_short_name, ':', route.shape.coordinates)
+    console.log(route.route_short_name, ':', route.multilinestring.coordinates)
 }
 console.log('Found', transitRoutes.length,'routes')
 

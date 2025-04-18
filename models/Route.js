@@ -7,19 +7,19 @@ const transitRoutesSchema = new mongoose.Schema({
   route_category: String,
   route_long_name: String,
   multilinestring: {
-      type: {
-          type: String,
-          enum: ["MultiLineString"],
-          required: true
-      },
-      coordinates: {
-          type: [[[Number]]], 
-          required: true
-      }
+    type: {
+      type: String,
+      enum: ["MultiLineString"],
+      required: true
+    },
+    coordinates: {
+      type: [[[Number]]],
+      required: true
+    }
   }
 });
 const COLLECTION_NAME = "Route2";
-transitRoutesSchema.index({ shape: "2dsphere" });
+transitRoutesSchema.index({ multilinestring: "2dsphere" });
 transitRoutesSchema.index({ route_short_name: 1 });
 
 export const getRouteModel = () => {
@@ -30,4 +30,4 @@ export const getRouteModel = () => {
   );
 };
 
-// Functions to expose to the outside world!
+
