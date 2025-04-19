@@ -1,5 +1,5 @@
 // controllers/route.controller.js
-import { findTransitRoutesNear } from '../services/route.service.js'
+import { findTransitRoutesNear, findAllTransitRoutes } from '../services/route.service.js'
 
 // Create a controller object with methods
 const routeController = {
@@ -33,6 +33,17 @@ const routeController = {
         res.json(nearbyRoutes);
     } catch (error) {
         console.error('Error finding nearby routes:', error);
+        res.status(500).json({ message: error.message });
+    }
+  },
+  getAllRoutes: async(req, res, next) => {
+    try {
+        // Get all transit routes
+        const allRoutes = await findAllTransitRoutes();
+        console.log(`Retrieved ${allRoutes.length} routes`);
+        res.json(allRoutes);
+    } catch (error) {
+        console.error('Error finding all routes:', error);
         res.status(500).json({ message: error.message });
     }
   }

@@ -5,7 +5,8 @@ import { getDatabase } from "../db.js";
 const stopSchema = new mongoose.Schema({
   stop_id: Number,
   stop_lat: Number,
-  stop_lon: Number
+  stop_lon: Number,
+  stop_name: String
 });
 const COLLECTION_NAME = "Stop2";
 stopSchema.index({ stop_id: 1 });
@@ -18,4 +19,3 @@ export const getStopModel = () => {
   );
 };
 
-// Functions to expose to the outside world!
