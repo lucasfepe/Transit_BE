@@ -5,6 +5,22 @@ import { getStopModel } from '../models/Stop.js';
 
 export const createSubscription = async (subscriptionData) => {
   const Subscription = getSubscriptionModel();
+  
+  // Set default notification settings if not provided
+  if (!subscriptionData.notificationSettings) {
+    subscriptionData.notificationSettings = {
+      enabled: true,
+      minTimeBetweenNotifications: 10,
+      soundEnabled: true,
+      vibrationEnabled: true
+    };
+  }
+  
+  // Set default notification distance if not provided
+  if (!subscriptionData.notificationDistance) {
+    subscriptionData.notificationDistance = 500; // 500 meters
+  }
+  
   const subscription = new Subscription(subscriptionData);
   return await subscription.save();
 };
@@ -34,6 +50,10 @@ export const getSubscriptionsByUserAndRoute = async (userId, routeShortName) => 
 
 export const updateSubscription = async (id, updateData) => {
   const Subscription = getSubscriptionModel();
+  
+  // Set updated timestamp
+  updateData.updatedAt = new Date();
+  
   return await Subscription.findByIdAndUpdate(id, updateData, { new: true });
 };
 
@@ -120,3 +140,104 @@ export const getSubscriptionsWithDetails = async (userId) => {
 
 // Keep the old function name for backward compatibility
 export const getSubscriptionsWithRouteDetails = getSubscriptionsWithDetails;
+
+// NEW METHODS FOR PUSH NOTIFICATIONS
+
+/**
+ * Get active subscriptions for a specific route and stop
+ */
+export const getActiveSubscriptionsForRouteAndStop = async (routeId, stopId) => {
+  const Subscription = getSubscriptionModel();
+  
+  return await Subscription.find({
+    route_id: routeId,
+    stop_id: stopId,
+    active: true,
+    'notificationSettings.enabled': true
+  });
+};
+
+/**
+ * Update last notification time for a subscription
+ */
+export const updateLastNotification = async (subscriptionId, vehicleId) => {
+  const Subscription = getSubscriptionModel();
+  
+  return await Subscription.findByIdAndUpdate(
+    subscriptionId,
+    { 
+      $set: { 
+        lastNotifiedAt: new Date(),
+        lastNotifiedVehicleId: vehicleId
+      },
+      $inc: { notificationCount: 1 }
+    },
+    { new: true }
+  );
+};
+
+/**
+ * Check if a subscription should receive a notification
+ * based on time constraints and previous notifications
+ */
+export const shouldSendNotification = async (subscriptionId, vehicleId) => {
+  const Subscription = getSubscriptionModel();
+  const subscription = await Subscription.findById(subscriptionId);
+  
+  if (!subscription || !subscription.active || 
+      !subscription.notificationSettings?.enabled) {
+    return false;
+  }
+  
+  // Don't notify for the same vehicle
+  if (subscription.lastNotifiedVehicleId === vehicleId) {
+    return false;
+  }
+  
+  // Check time between notifications
+  if (subscription.lastNotifiedAt) {
+    const minTimeBetween = subscription.notificationSettings?.minTimeBetweenNotifications || 10;
+    const minTimeMs = minTimeBetween * 60 * 1000;
+    const timeSinceLastNotification = Date.now() - subscription.lastNotifiedAt.getTime();
+    
+    if (timeSinceLastNotification < minTimeMs) {
+      return false;
+    }
+  }
+  
+  // Check if current time is within any of the subscription time windows
+  if (subscription.times && subscription.times.length > 0) {
+    const now = new Date();
+    const currentDay = now.getDay(); // 0-6, Sunday-Saturday
+    
+    // Check if current day and time match any subscription time
+    const isTimeMatch = subscription.times.some(timeWindow => {
+      // Check if current day is in weekdays
+      if (!timeWindow.weekdays.includes(currentDay)) {
+        return false;
+      }
+      
+      // Convert current time to Date objects for comparison
+      const currentTime = new Date();
+      const startTime = new Date(timeWindow.startTime);
+      const endTime = new Date(timeWindow.endTime);
+      
+      // Set current date on start and end times for proper comparison
+      startTime.setFullYear(currentTime.getFullYear());
+      startTime.setMonth(currentTime.getMonth());
+      startTime.setDate(currentTime.getDate());
+      
+      endTime.setFullYear(currentTime.getFullYear());
+      endTime.setMonth(currentTime.getMonth());
+      endTime.setDate(currentTime.getDate());
+      
+      // Check if current time is within the time window
+      return currentTime >= startTime && currentTime <= endTime;
+    });
+    
+    return isTimeMatch;
+  }
+  
+  // If no time windows specified, allow notification at any time
+  return true;
+};

@@ -22,11 +22,38 @@ const userSchema = new mongoose.Schema({
   },
   lastLogin: { 
     type: Date 
+  },
+  // Add push notification fields
+  pushTokens: [{
+    token: {
+      type: String,
+      required: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  notificationsEnabled: {
+    type: Boolean,
+    default: true
+  },
+  notificationSettings: {
+    distance: {
+      type: Number,
+      default: 500 // Default notification distance in meters
+    },
+    minTimeBetweenNotifications: {
+      type: Number,
+      default: 10 // Default minimum time between notifications in minutes
+    }
   }
 });
 
 const COLLECTION_NAME = "Users";
 userSchema.index({ email: 1 });
+// Add index for push tokens for faster queries
+userSchema.index({ 'pushTokens.token': 1 });
 
 export const getUserModel = () => {
   const db = getDatabase();

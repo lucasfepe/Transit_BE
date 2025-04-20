@@ -6,6 +6,46 @@ import { getStopOrderModel } from '../models/StopOrder.js';
 import { getStopModel } from '../models/Stop.js';
 
 class TripMappingService {
+
+    async getRouteForTrip(tripId) {
+        try {
+            if (!tripId) return null;
+            
+            // Convert tripId to number if it's a string
+            const numericTripId = typeof tripId === 'string' ? Number(tripId) : tripId;
+            
+            // Check cache first using the existing method
+            const { cached, uncachedTripIds } = cacheService.getMultipleTripMappings([numericTripId], true);
+            
+            // If we found it in cache, return the route ID
+            for (const [routeId, mapping] of Object.entries(cached)) {
+                if (mapping.trip_ids.includes(numericTripId)) {
+                    return routeId;
+                }
+            }
+            
+            // If not in cache, query the database
+            if (uncachedTripIds.length > 0) {
+                const Trip = getTripModel();
+                const trip = await Trip.findOne({ trip_id: numericTripId });
+                
+                if (trip && trip.route_id) {
+                    // Add to cache for future lookups
+                    cacheService.setTripMapping(String(trip.route_id), {
+                        trip_ids: [numericTripId]
+                    }, true);
+                    
+                    return String(trip.route_id);
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('Error getting route for trip:', error);
+            return null;
+        }
+    }
+
     // Lightweight method - only returns trip-to-route mappings
     async getLightMappingsForTrips(tripIds) {
         // First check cache
