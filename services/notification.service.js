@@ -3,6 +3,7 @@ import { Expo } from 'expo-server-sdk';
 import { getUserModel } from '../models/User.js';
 import { getSubscriptionModel } from '../models/Subscription.js';
 import { getStopModel } from '../models/Stop.js';
+import tripMappingService from '../services/tripMapping.service.js';
 
 class NotificationService {
   constructor() {
@@ -18,95 +19,99 @@ class NotificationService {
         return;
       }
       
-      console.log(`Processing ${vehicles.length} vehicles for notifications`);
-      
       const Stop = getStopModel();
       const Subscription = getSubscriptionModel();
       const User = getUserModel();
       
-      // Process each vehicle
-      for (const vehicle of vehicles) {
+      // Process vehicles in parallel
+      await Promise.all(vehicles.map(async (vehicle) => {
         // Skip vehicles without route ID
         if (!vehicle.routeId) {
-          continue;
+          return;
         }
         
-        // Find all stops for this route
-        const stops = await Stop.find({ 
-          route_id: vehicle.routeId 
-        });
+        const routeDetails = await tripMappingService.getRouteDetails(vehicle.routeId);
         
-        if (!stops || stops.length === 0) {
-          continue;
+        if (!routeDetails || !routeDetails.stops || routeDetails.stops.length === 0) {
+          return;
         }
         
-        // Calculate distance to each stop
-        const stopsWithDistance = stops.map(stop => {
-          const distance = this.calculateDistance(
+        // Calculate distance to each stop (this is CPU-bound, not I/O-bound)
+        const stopsWithDistance = routeDetails.stops.map(stop => ({
+          stopId: stop.stop_id,
+          stopName: stop.stop_name,
+          distance: this.calculateDistance(
             vehicle.latitude,
             vehicle.longitude,
             stop.stop_lat,
             stop.stop_lon
-          );
-          
-          return {
-            stopId: stop.stop_id,
-            stopName: stop.stop_name,
-            distance
-          };
-        });
+          )
+        }));
         
-        // Find stops within notification distance (default 500m)
-        const nearbyStops = stopsWithDistance.filter(stop => stop.distance <= 500);
+        // Find stops within notification distance
+        const nearbyStops = stopsWithDistance.filter(stop => stop.distance <= 1000);
         
         if (nearbyStops.length === 0) {
-          continue;
+          return;
         }
         
-        // For each nearby stop, find active subscriptions
-        for (const stop of nearbyStops) {
+        // Process all nearby stops in parallel
+        await Promise.all(nearbyStops.map(async (stop) => {
           // Find subscriptions for this route and stop
           const subscriptions = await Subscription.find({
-            routeId: vehicle.routeId,
-            stopId: stop.stopId,
+            route_id: vehicle.routeId,
+            stop_id: stop.stopId,
             active: true,
-            // Don't notify for the same vehicle within 10 minutes
-            $or: [
-              { lastNotifiedVehicleId: { $ne: vehicle.id } },
-              { lastNotifiedAt: { $lt: new Date(Date.now() - 10 * 60 * 1000) } }
-            ]
+            // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            // IN PRODUCTION UNCOMMENT THIS OR USERS WILL GET NOTIFICATIONS EVERY 30 SECONDS!!!
+            // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            // $or: [
+            //   { lastNotifiedVehicleId: { $ne: vehicle.id } },
+            //   { lastNotifiedAt: { $lt: new Date(Date.now() - 10 * 60 * 1000) } }
+            // ]
           });
           
           if (!subscriptions || subscriptions.length === 0) {
-            continue;
+            return;
           }
           
-          // Check if current time matches subscription time ranges and days
           const now = new Date();
           const currentDay = now.getDay(); // 0-6, Sunday is 0
-          const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
           
-          // Process each subscription
-          for (const subscription of subscriptions) {
-            // Skip if day doesn't match
-            if (!subscription.days.includes(currentDay)) {
-              continue;
+          // Process all subscriptions in parallel
+          const subscriptionPromises = subscriptions.map(async (subscription) => {
+            // Check if any time range matches the current day and time
+            let isTimeInRange = false;
+            
+            // Loop through each time entry in the subscription
+            if (subscription.times && subscription.times.length > 0) {
+              for (const timeEntry of subscription.times) {
+                // Check if current day is in the weekdays array
+                if (!timeEntry.weekdays.includes(currentDay)) {
+                  continue;
+                }
+                
+                // Parse start and end times
+                const startTime = new Date(timeEntry.startTime);
+                const endTime = new Date(timeEntry.endTime);
+                
+                // Check if current time is within range
+                if (now >= startTime && now <= endTime) {
+                  isTimeInRange = true;
+                  break; // Found a matching time range, no need to check others
+                }
+              }
             }
             
-            // Check if current time is within any time range
-            const isTimeInRange = subscription.timeRanges.some(range => {
-              return currentTime >= range.start && currentTime <= range.end;
-            });
-            
             if (!isTimeInRange) {
-              continue;
+              return;
             }
             
             // Get user
-            const user = await User.findOne({ uid: subscription.userId });
+            const user = await User.findOne({ firebaseUid: subscription.userId });
             
             if (!user || !user.notificationsEnabled || !user.pushTokens || user.pushTokens.length === 0) {
-              continue;
+              return;
             }
             
             // Queue notifications for each token
@@ -115,16 +120,16 @@ class NotificationService {
               
               // Validate token
               if (!Expo.isExpoPushToken(token)) {
-                console.warn(`Invalid Expo push token: ${token}`);
+                console.warn(`Invalid Expo push token for user ${user._id}: ${token}`);
                 continue;
               }
               
               // Create notification message
               const message = {
                 to: token,
-                sound: 'default',
+                sound: subscription.notificationSettings?.soundEnabled ? 'default' : null,
                 title: 'Your Transit is Approaching',
-                body: `Route ${vehicle.routeId} is approaching ${stop.stopName} (${Math.round(stop.distance)}m away)`,
+                body: `Route ${vehicle.routeId} is approaching stop #${stop.stopId} (${Math.round(stop.distance)}m away)`,
                 data: {
                   routeId: vehicle.routeId,
                   stopId: stop.stopId,
@@ -141,10 +146,13 @@ class NotificationService {
             // Update subscription with last notification info
             subscription.lastNotifiedVehicleId = vehicle.id;
             subscription.lastNotifiedAt = new Date();
-            await subscription.save();
-          }
-        }
-      }
+            return subscription.save();
+          });
+          
+          // Wait for all subscription processing to complete
+          await Promise.all(subscriptionPromises);
+        }));
+      }));
       
       // Process the queue if not already processing
       if (this.notificationQueue.length > 0 && !this.processingQueue) {
@@ -175,7 +183,7 @@ class NotificationService {
       for (const chunk of chunks) {
         try {
           const ticketChunk = await this.expo.sendPushNotificationsAsync(chunk);
-          console.log('Notifications sent:', ticketChunk.length);
+          // console.log('Notifications sent:', ticketChunk.length);
           
           // Handle tickets (for error checking, etc.)
           for (let i = 0; i < ticketChunk.length; i++) {
