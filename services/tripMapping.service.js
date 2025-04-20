@@ -76,43 +76,45 @@ class TripMappingService {
         const Trip = getTripModel();
         const StopOrder = getStopOrderModel();
         const Stop = getStopModel();
-
+    
         // Get the route
         const route = await Route.findOne({ route_short_name: routeId });
         if (!route) {
             return null;
         }
-
+    
         // Get a trip for this route to find stops
         const trip = await Trip.findOne({ route_id: routeId });
         if (!trip) {
             // Return route with shape but no stops
             return {
                 route_id: routeId,
+                route_long_name: route.route_long_name, // Add route_long_name
                 shape: route.multilinestring.coordinates,
                 stops: []
             };
         }
-
+    
         // Get stop orders for this trip
         const stopOrders = await StopOrder.find({ trip_id: trip.trip_id });
-
+    
         // Extract all stop IDs
         const stopIds = stopOrders.map(order => order.stop_id);
-
+    
         // Get all stops
         const stops = await Stop.find({ stop_id: { $in: stopIds } });
-
+    
         // Create a map of stop_id to stop data
         const stopsMap = stops.reduce((acc, stop) => {
             acc[stop.stop_id] = {
                 stop_id: stop.stop_id,
                 stop_lat: stop.stop_lat,
-                stop_lon: stop.stop_lon
+                stop_lon: stop.stop_lon,
+                stop_name: stop.stop_name 
             };
             return acc;
         }, {});
-
+    
         // Combine stop data with sequence information
         const routeStops = stopOrders
             .filter(order => stopsMap[order.stop_id]) // Only include stops we have data for
@@ -121,10 +123,11 @@ class TripMappingService {
                 stop_sequence: order.stop_sequence
             }))
             .sort((a, b) => a.stop_sequence - b.stop_sequence); // Sort by sequence
-
+    
         // Return complete route details
         return {
             route_id: routeId,
+            route_long_name: route.route_long_name, // Add route_long_name
             shape: route.multilinestring.coordinates,
             stops: routeStops
         };

@@ -14,6 +14,7 @@ class TripMappingController {
             // Get lightweight mappings (trip-to-route only)
             const mappings = await tripMappingService.getLightMappingsForTrips(tripIds);
             console.log("count:", Object.keys(mappings).length);
+            console.log("mappings:", JSON.stringify(mappings));
             res.json(mappings);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -35,7 +36,7 @@ class TripMappingController {
             if (!routeDetails) {
                 return res.status(404).json({ message: 'Route not found' });
             }
-
+            
             res.json(routeDetails);
         } catch (error) {
             res.status(500).json({ message: error.message });

@@ -48,19 +48,20 @@ class CacheService {
     // Get detailed route information
     getRouteDetails(routeId) {
         const cached = this.routeDetailsCache[routeId];
-
+    
         if (!cached) {
             return null;
         }
-
+    
         // Check if cache is still valid
         if (Date.now() - cached.timestamp > this.cacheTTL) {
             delete this.routeDetailsCache[routeId];
             return null;
         }
-
+    
         return {
             route_id: routeId,
+            route_long_name: cached.route_long_name, // Add route_long_name
             shape: cached.shape,
             stops: cached.stops
         };
