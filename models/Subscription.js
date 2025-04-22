@@ -55,11 +55,7 @@ const subscriptionSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  // New fields for push notifications
-  notificationDistance: {
-    type: Number,
-    default: 500 // Distance in meters to trigger notification
-  },
+  // Fields for tracking notification history
   lastNotifiedVehicleId: {
     type: String,
     default: null
@@ -71,24 +67,6 @@ const subscriptionSchema = new mongoose.Schema({
   notificationCount: {
     type: Number,
     default: 0
-  },
-  notificationSettings: {
-    enabled: {
-      type: Boolean,
-      default: true
-    },
-    minTimeBetweenNotifications: {
-      type: Number,
-      default: 10 // Minimum time between notifications in minutes
-    },
-    soundEnabled: {
-      type: Boolean,
-      default: true
-    },
-    vibrationEnabled: {
-      type: Boolean,
-      default: true
-    }
   }
 });
 
@@ -111,27 +89,11 @@ subscriptionSchema.pre('save', function(next) {
   next();
 });
 
-// Helper method to check if a notification should be sent
-subscriptionSchema.methods.shouldNotify = function(currentTime, vehicleId) {
+// Helper method to check if the subscription is active at the current time
+subscriptionSchema.methods.isActiveAtTime = function(currentTime) {
   // Don't notify if subscription is not active
-  if (!this.active || !this.notificationSettings.enabled) {
+  if (!this.active) {
     return false;
-  }
-  
-  // Check if we've already notified for this vehicle
-  if (this.lastNotifiedVehicleId === vehicleId) {
-    return false;
-  }
-  
-  // Check if minimum time between notifications has passed
-  if (this.lastNotifiedAt) {
-    const minTimeBetween = this.notificationSettings.minTimeBetweenNotifications || 10; // Default 10 minutes
-    const minTimeMs = minTimeBetween * 60 * 1000;
-    const timeSinceLastNotification = currentTime - this.lastNotifiedAt.getTime();
-    
-    if (timeSinceLastNotification < minTimeMs) {
-      return false;
-    }
   }
   
   // Check if current time is within any of the subscription time windows
@@ -166,7 +128,7 @@ subscriptionSchema.methods.shouldNotify = function(currentTime, vehicleId) {
     return isTimeMatch;
   }
   
-  // If no time windows specified, allow notification at any time
+  // If no time windows specified, consider active at any time
   return true;
 };
 

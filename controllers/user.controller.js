@@ -183,15 +183,17 @@ export const getNotificationSettings = async (req, res, next) => {
             return res.status(404).json({ error: 'User not found' });
         }
         
+        // Format the response to match the frontend expectations
+        const settings = {
+            enabled: user.notificationsEnabled || false,
+            soundEnabled: user.notificationSettings?.soundEnabled !== false, // Default to true if not set
+            vibrationEnabled: user.notificationSettings?.vibrationEnabled !== false, // Default to true if not set
+            minTimeBetweenNotifications: user.notificationSettings?.minTimeBetweenNotifications || 10,
+            distance: user.notificationSettings?.distance || 1000
+        };
+        
         // Return notification settings
-        res.status(200).json({
-            notificationsEnabled: user.notificationsEnabled || false,
-            pushTokens: user.pushTokens ? user.pushTokens.length : 0,
-            notificationSettings: user.notificationSettings || {
-                distance: 500,
-                minTimeBetweenNotifications: 10
-            }
-        });
+        res.status(200).json(settings);
     } catch (error) {
         next(error);
     }
@@ -202,17 +204,32 @@ export const getNotificationSettings = async (req, res, next) => {
  */
 export const updateNotificationSettings = async (req, res, next) => {
     try {
-        const { distance, minTimeBetweenNotifications } = req.body;
+        const { 
+            distance, 
+            minTimeBetweenNotifications, 
+            soundEnabled, 
+            vibrationEnabled 
+        } = req.body;
+        
         const userId = req.user.uid;
         
         const updateData = {};
         
-        if (distance !== undefined) {
-            updateData['notificationSettings.distance'] = distance;
+        // Only update fields that are provided
+        if (distance !== undefined && !isNaN(distance)) {
+            updateData['notificationSettings.distance'] = Number(distance);
         }
         
-        if (minTimeBetweenNotifications !== undefined) {
-            updateData['notificationSettings.minTimeBetweenNotifications'] = minTimeBetweenNotifications;
+        if (minTimeBetweenNotifications !== undefined && !isNaN(minTimeBetweenNotifications)) {
+            updateData['notificationSettings.minTimeBetweenNotifications'] = Number(minTimeBetweenNotifications);
+        }
+        
+        if (soundEnabled !== undefined) {
+            updateData['notificationSettings.soundEnabled'] = Boolean(soundEnabled);
+        }
+        
+        if (vibrationEnabled !== undefined) {
+            updateData['notificationSettings.vibrationEnabled'] = Boolean(vibrationEnabled);
         }
         
         if (Object.keys(updateData).length === 0) {
@@ -220,6 +237,24 @@ export const updateNotificationSettings = async (req, res, next) => {
         }
         
         const User = getUserModel();
+        
+        // Ensure notificationSettings object exists before updating
+        await User.updateOne(
+            { 
+                firebaseUid: userId,
+                notificationSettings: { $exists: false }
+            },
+            { 
+                $set: { 
+                    notificationSettings: {
+                        distance: 1000,
+                        minTimeBetweenNotifications: 10,
+                        soundEnabled: true,
+                        vibrationEnabled: true
+                    }
+                } 
+            }
+        );
         
         // Update user notification settings
         const result = await User.updateOne(

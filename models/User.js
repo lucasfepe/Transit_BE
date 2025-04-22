@@ -41,11 +41,19 @@ const userSchema = new mongoose.Schema({
   notificationSettings: {
     distance: {
       type: Number,
-      default: 500 // Default notification distance in meters
+      default: 1000 // Default notification distance in meters
     },
     minTimeBetweenNotifications: {
       type: Number,
       default: 10 // Default minimum time between notifications in minutes
+    },
+    soundEnabled: {
+      type: Boolean,
+      default: true
+    },
+    vibrationEnabled: {
+      type: Boolean,
+      default: true
     }
   }
 });

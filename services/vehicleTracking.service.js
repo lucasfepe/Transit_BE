@@ -3,6 +3,7 @@ import axios from 'axios';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import notificationService from './notification.service.js';
 import tripMappingService from './tripMapping.service.js';
+import { getSubscriptionModel } from '../models/Subscription.js';
 
 class VehicleTrackingService {
   constructor() {
@@ -11,6 +12,7 @@ class VehicleTrackingService {
     this.consecutiveFailures = 0;
     this.maxConsecutiveFailures = 3;
     this.lastSuccessfulFetch = 0;
+    this.routeCache = new Map(); // Cache for trip to route mapping only
   }
   
   // Start the tracking service
@@ -44,6 +46,54 @@ class VehicleTrackingService {
     this.isRunning = false;
   }
   
+  // Get active subscriptions and their route IDs
+  async getActiveSubscribedRoutes() {
+    try {
+      const Subscription = getSubscriptionModel();
+      const activeSubscriptions = await Subscription.find({ active: true });
+      
+      // Extract unique route IDs
+      const routeIds = new Set();
+      for (const sub of activeSubscriptions) {
+        if (sub.route_id) {
+          routeIds.add(sub.route_id);
+        }
+      }
+      
+      return routeIds;
+    } catch (error) {
+      console.error('Error getting active subscribed routes:', error.message);
+      return new Set();
+    }
+  }
+  
+  // Get route ID for a trip with caching
+  async getRouteForTrip(tripId) {
+    // Check cache first
+    if (this.routeCache.has(tripId)) {
+      return this.routeCache.get(tripId);
+    }
+    
+    // Get from service
+    const routeId = await tripMappingService.getRouteForTrip(tripId);
+    
+    // Update cache
+    if (routeId) {
+      this.routeCache.set(tripId, routeId);
+      
+      // Limit cache size to prevent memory leaks
+      if (this.routeCache.size > 1000) {
+        // Remove oldest entries
+        const keysToDelete = Array.from(this.routeCache.keys()).slice(0, 100);
+        for (const key of keysToDelete) {
+          this.routeCache.delete(key);
+        }
+      }
+    }
+    
+    return routeId;
+  }
+  
   // Fetch vehicle locations from government API
   async fetchVehicleLocations() {
     try {
@@ -59,6 +109,15 @@ class VehicleTrackingService {
           // Reset counter after 5 minutes to try again
           this.consecutiveFailures = 0;
         }
+      }
+      
+      // Get active subscribed routes (fresh every time)
+      const subscribedRouteIds = await this.getActiveSubscribedRoutes();
+      
+      // If there are no subscribed routes, skip the API call entirely
+      if (subscribedRouteIds.size === 0) {
+        console.log('No active subscriptions, skipping vehicle location fetch');
+        return;
       }
       
       console.log('Fetching vehicle locations from government API');
@@ -86,28 +145,40 @@ class VehicleTrackingService {
       }
       
       const vehicles = [];
+      const processedTrips = new Set(); // To avoid duplicate work for trip-to-route mapping
       
       // Process each entity
       for (const entity of feed.entity) {
         try {
           if (entity.vehicle?.vehicle && entity.vehicle?.position) {
             const vehicle = entity.vehicle;
+            const tripId = vehicle.trip?.tripId;
+            
+            if (!tripId) continue;
+            
+            // Skip if we've already processed this trip
+            if (processedTrips.has(tripId)) continue;
+            processedTrips.add(tripId);
+            
+            // Get the route ID for this trip
+            const routeId = await this.getRouteForTrip(tripId);
+            
+            // Skip if no route ID or if the route doesn't have any subscriptions
+            if (!routeId || !subscribedRouteIds.has(routeId)) {
+              continue;
+            }
             
             const vehicleData = {
               id: vehicle.vehicle.id || 'unknown',
               latitude: vehicle.position.latitude,
               longitude: vehicle.position.longitude,
-              tripId: vehicle.trip?.tripId || 'N/A',
+              tripId: tripId,
+              routeId: routeId,
               label: vehicle.vehicle.label || 'N/A',
               speed: vehicle.position.speed || 0
             };
             
-            // Get the route ID for this trip
-            vehicleData.routeId = await tripMappingService.getRouteForTrip(vehicleData.tripId);
-            
-            if (vehicleData.routeId) {
-              vehicles.push(vehicleData);
-            }
+            vehicles.push(vehicleData);
           }
         } catch (entityError) {
           console.warn(`Error processing entity:`, entityError.message);
@@ -115,7 +186,7 @@ class VehicleTrackingService {
         }
       }
       
-      console.log(`Successfully processed ${vehicles.length} vehicles`);
+      console.log(`Successfully processed ${vehicles.length} vehicles on subscribed routes`);
       
       // Process vehicles for notifications
       if (vehicles.length > 0) {
