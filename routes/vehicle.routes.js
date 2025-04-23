@@ -6,6 +6,6 @@ import { isAuthenticated } from '../middleware/auth.middleware.js';
 const router = Router();
 
 // Get vehicles near a location
-router.get('/', isAuthenticated, vehicleController.getVehiclesNearLocation);
+router.get('/nearby', isAuthenticated, vehicleController.getVehiclesNearLocation);
 
 export default router;
