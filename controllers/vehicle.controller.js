@@ -19,7 +19,6 @@ export const getVehiclesNearLocation = async (req, res, next) => {
 
     // Get vehicles from the tracking service
     const vehicles = await vehicleTrackingService.getVehiclesNearLocation(latitude, longitude, radiusInMeters);
-    console.log(JSON.stringify(vehicles));
     // Return in the format expected by the frontend
     res.status(200).json({
       success: true,
