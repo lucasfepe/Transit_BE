@@ -19,7 +19,7 @@ async function testExpoConnection() {
       body: "Test message",
       data: { test: true },
     };
-    
+
     // This will throw an error if there's a connection issue
     expo.chunkPushNotifications([message]);
     console.log("Expo connection test successful");
@@ -41,23 +41,23 @@ class NotificationService {
   async processVehicleLocations(vehicles) {
     try {
       console.log(`Processing ${vehicles ? vehicles.length : 0} vehicles`);
-      
+
       if (!vehicles || vehicles.length === 0) {
         return;
       }
-  
+
       // Get current time info for filtering
       const now = new Date();
-  
+
       // Get all active subscriptions (no caching)
       const Subscription = getSubscriptionModel();
       const activeSubscriptions = await Subscription.find({ active: true });
       console.log(`Active subscriptions: ${activeSubscriptions.length}`);
-  
+
       if (!activeSubscriptions || activeSubscriptions.length === 0) {
         return; // No active subscriptions, no need to process vehicles
       }
-  
+
       // Filter subscriptions by day of week and time of day first
       const timeFilteredSubscriptions = activeSubscriptions.filter(
         (subscription) => {
@@ -66,11 +66,11 @@ class NotificationService {
         }
       );
       console.log(`Time-filtered subscriptions: ${timeFilteredSubscriptions.length}`);
-  
+
       if (timeFilteredSubscriptions.length === 0) {
         return; // No subscriptions active at the current time
       }
-  
+
       // Group subscriptions by route_id for faster lookup
       const subscriptionsByRoute = {};
       for (const sub of timeFilteredSubscriptions) {
@@ -79,25 +79,25 @@ class NotificationService {
         }
         subscriptionsByRoute[sub.route_id].push(sub);
       }
-  
+
       // Get unique route IDs that have subscriptions
       const routesWithSubscriptions = Object.keys(subscriptionsByRoute);
       console.log(`Routes with subscriptions: ${routesWithSubscriptions.join(', ')}`);
-  
+
       // Filter vehicles to only those with routes that have subscriptions
       const relevantVehicles = vehicles.filter(
         (vehicle) =>
           vehicle.routeId && routesWithSubscriptions.includes(vehicle.routeId)
       );
       console.log(`Found ${relevantVehicles.length} relevant vehicles with subscriptions`);
-  
+
       if (relevantVehicles.length === 0) {
         return; // No vehicles on routes with subscriptions
       }
-  
+
       const Stop = getStopModel();
       const User = getUserModel();
-  
+
       // Fetch all users with active subscriptions to avoid multiple DB queries
       const userIds = [
         ...new Set(timeFilteredSubscriptions.map((sub) => sub.userId)),
@@ -107,29 +107,29 @@ class NotificationService {
         notificationsEnabled: true, // Only get users with notifications enabled
       });
       console.log(`Found ${users.length} users with notifications enabled`);
-  
+
       // Create a map for faster user lookup
       const userMap = {};
       for (const user of users) {
         userMap[user.firebaseUid] = user;
       }
-  
+
       // Track subscriptions that need to be updated (using a Map to avoid duplicates)
       const subscriptionsToUpdate = new Map();
-  
+
       // Process only relevant vehicles
       await Promise.all(
         relevantVehicles.map(async (vehicle) => {
           console.log(`Processing vehicle for route ${vehicle.routeId}`);
-          
+
           // Get subscriptions for this route
           const routeSubscriptions = subscriptionsByRoute[vehicle.routeId];
-  
+
           if (!routeSubscriptions || routeSubscriptions.length === 0) {
             console.log(`No subscriptions found for route ${vehicle.routeId}`);
             return;
           }
-  
+
           // Filter subscriptions by users with notifications enabled and time interval
           const eligibleSubscriptions = routeSubscriptions.filter((sub) => {
             const user = userMap[sub.userId];
@@ -137,44 +137,44 @@ class NotificationService {
               console.log(`User not found for subscription: ${sub._id}`);
               return false; // User not found or notifications disabled
             }
-  
+
             // Get user's notification interval setting (in minutes)
             const notificationInterval =
               user.notificationSettings?.minTimeBetweenNotifications !== undefined
                 ? user.notificationSettings.minTimeBetweenNotifications
                 : 5;
-            
+
             // Check if enough time has passed since last notification based on user's interval setting
             if (sub.lastNotifiedAt) {
               const intervalMs = notificationInterval * 60 * 1000;
               const timeSinceLastNotification =
                 now - new Date(sub.lastNotifiedAt);
-  
+
               if (timeSinceLastNotification < intervalMs) {
                 console.log(`Not enough time passed for subscription ${sub._id}, last notified: ${sub.lastNotifiedAt}`);
                 return false; // Not enough time has passed since last notification
               }
             }
-  
+
             return true;
           });
           console.log(`Found ${eligibleSubscriptions.length} eligible subscriptions for route ${vehicle.routeId}`);
-  
+
           if (eligibleSubscriptions.length === 0) {
             return; // No eligible subscriptions for this vehicle
           }
-  
+
           // Get unique stop IDs from eligible subscriptions
           const subscribedStopIds = [
             ...new Set(eligibleSubscriptions.map((sub) => sub.stop_id)),
           ];
           console.log(`Subscribed stop IDs for route ${vehicle.routeId}: ${subscribedStopIds.join(', ')}`);
-  
+
           // Get route details
           const routeDetails = await tripMappingService.getRouteDetails(
             vehicle.routeId
           );
-  
+
           if (
             !routeDetails ||
             !routeDetails.stops ||
@@ -183,23 +183,23 @@ class NotificationService {
             console.log(`No route details found for route ${vehicle.routeId}`);
             return;
           }
-  
+
           const stopsMap = {};
           routeDetails.stops.forEach((stop) => {
             stopsMap[stop.stop_id] = stop;
           });
-  
+
           // Map subscribedStopIds to their corresponding stop objects
           const relevantStops = subscribedStopIds
             .map((stopId) => stopsMap[Number(stopId)] || stopsMap[stopId])
             .filter((stop) => stop !== undefined);
-  
+
           if (relevantStops.length === 0) {
             console.log(`No relevant stops found for route ${vehicle.routeId}`);
             return;
           }
           console.log(`Found ${relevantStops.length} relevant stops for route ${vehicle.routeId}`);
-  
+
           // Calculate distance only for relevant stops
           const stopsWithDistance = relevantStops.map((stop) => {
             const distance = this.calculateDistance(
@@ -215,7 +215,7 @@ class NotificationService {
               distance: distance,
             };
           });
-  
+
           // Group subscriptions by stop_id for faster lookup
           const subscriptionsByStop = {};
           for (const sub of eligibleSubscriptions) {
@@ -224,37 +224,37 @@ class NotificationService {
             }
             subscriptionsByStop[sub.stop_id].push(sub);
           }
-  
+
           // Process all stops
           for (const stop of stopsWithDistance) {
             // Get subscriptions for this stop
             const stopSubscriptions = subscriptionsByStop[stop.stopId];
-  
+
             if (!stopSubscriptions || stopSubscriptions.length === 0) {
               console.log(`No subscriptions found for stop ${stop.stopId}`);
               continue;
             }
             console.log(`Found ${stopSubscriptions.length} subscriptions for stop ${stop.stopId}`);
-  
+
             // Process all subscriptions for this stop
             for (const subscription of stopSubscriptions) {
               // Get user
               const user = userMap[subscription.userId];
-  
+
               if (!user || !user.pushTokens || user.pushTokens.length === 0) {
                 console.log(`No valid user or push tokens for subscription ${subscription._id}`);
                 continue;
               }
-  
+
               // Check if vehicle is within user's notification distance
               const userDistance = user.notificationSettings?.distance || 1000;
               console.log(`User distance threshold: ${userDistance}m, actual distance: ${stop.distance}m`);
-              
+
               if (stop.distance > userDistance) {
                 console.log(`Vehicle too far from stop ${stop.stopId} for user ${user.firebaseUid}`);
                 continue; // Vehicle is too far from stop based on user settings
               }
-  
+
               // Send only one notification per user, using the first valid token
               if (user.pushTokens && user.pushTokens.length > 0) {
                 // Find the first valid token
@@ -262,7 +262,7 @@ class NotificationService {
                 for (const tokenObj of user.pushTokens) {
                   const token = tokenObj.token;
                   console.log(`Checking token for user ${user.firebaseUid}: ${token}`);
-                  
+
                   if (Expo.isExpoPushToken(token)) {
                     console.log(`Valid Expo push token found: ${token}`);
                     validToken = token;
@@ -271,13 +271,13 @@ class NotificationService {
                     console.warn(`Invalid Expo push token for user ${user._id}: ${token}`);
                   }
                 }
-  
+
                 // If we found a valid token, send the notification
                 if (validToken) {
                   // Get user's sound preference
                   const soundEnabled =
                     user.notificationSettings?.soundEnabled !== false;
-  
+
                   // Get user's vibration preference
                   const vibrationEnabled =
                     user.notificationSettings?.vibrationEnabled !== false;
@@ -289,25 +289,26 @@ class NotificationService {
                     to: validToken,
                     sound: soundEnabled ? "default" : null,
                     title: "Your Transit is Approaching",
-                    body: `Route ${vehicle.routeId} is approaching stop #${
-                      stop.stopId
-                    } (${Math.round(stop.distance)}m away)`,
+                    body: `Route ${vehicle.routeId} is approaching stop #${stop.stopId
+                      } (${Math.round(stop.distance)}m away)`,
                     data: {
                       routeId: vehicle.routeId,
                       stopId: stop.stopId,
                       vehicleId: vehicle.id,
                       distance: Math.round(stop.distance),
                       vibrate: vibrationEnabled,
+                      subscriptionId: subscription._id,
+                      type: "proximity_alert"
                     },
                     priority: "high",
                   };
-  
+
                   console.log(`Adding notification for user ${user.firebaseUid}, route ${vehicle.routeId}, stop ${stop.stopId}, distance ${Math.round(stop.distance)}m`);
                   // Add to queue
                   this.notificationQueue.push(message);
                 }
               }
-  
+
               // Instead of saving immediately, add to the map of subscriptions to update
               // Use subscription ID as key to ensure each subscription is only updated once
               subscriptionsToUpdate.set(subscription._id.toString(), {
@@ -319,10 +320,10 @@ class NotificationService {
           }
         })
       );
-  
+
       console.log(`Added ${this.notificationQueue.length} notifications to queue`);
       console.log(`Need to update ${subscriptionsToUpdate.size} subscriptions`);
-      
+
       // Now update all subscriptions in sequence to avoid parallel save errors
       for (const [id, data] of subscriptionsToUpdate.entries()) {
         try {
@@ -335,7 +336,7 @@ class NotificationService {
           console.error(`Error updating subscription ${id}:`, error);
         }
       }
-  
+
       // Process the notification queue if there are any notifications
       if (this.notificationQueue.length > 0) {
         console.log(`Processing ${this.notificationQueue.length} notifications`);
@@ -362,7 +363,7 @@ class NotificationService {
       // Create chunks of notifications (Expo has a limit)
       const chunks = this.expo.chunkPushNotifications(this.notificationQueue);
       console.log(`Created ${chunks.length} chunks for sending`);
-      
+
       // Store failed notifications for retry
       const failedNotifications = [];
 
@@ -376,7 +377,7 @@ class NotificationService {
           console.log(`Sending chunk with ${chunk.length} notifications`);
           const ticketChunk = await this.expo.sendPushNotificationsAsync(chunk);
           console.log(`Successfully sent ${ticketChunk.length} notifications`);
-          
+
           // Add a small delay between chunks
           if (chunks.length > 1) {
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -388,7 +389,7 @@ class NotificationService {
 
             if (ticket.status === "error") {
               console.error(`Error sending notification: ${ticket.message}`);
-              
+
               // Add to failed notifications for retry
               failedNotifications.push(chunk[i]);
 
@@ -464,7 +465,7 @@ class NotificationService {
       console.error(`Invalid Expo push token: ${token}`);
       return false;
     }
-    
+
     const message = {
       to: token,
       sound: 'default',
@@ -473,13 +474,13 @@ class NotificationService {
       data: { test: true },
       priority: 'high',
     };
-    
+
     try {
       const chunks = this.expo.chunkPushNotifications([message]);
       const [ticketChunk] = await Promise.all(
         chunks.map(chunk => this.expo.sendPushNotificationsAsync(chunk))
       );
-      
+
       console.log('Test notification result:', ticketChunk);
       return ticketChunk[0].status === 'ok';
     } catch (error) {
