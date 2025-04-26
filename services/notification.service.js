@@ -213,6 +213,8 @@ class NotificationService {
               stopId: stop.stop_id,
               stopName: stop.stop_name,
               distance: distance,
+              stop_lat: stop.stop_lat,
+              stop_lon: stop.stop_lon,
             };
           });
 
@@ -281,9 +283,8 @@ class NotificationService {
                   // Get user's vibration preference
                   const vibrationEnabled =
                     user.notificationSettings?.vibrationEnabled !== false;
-                  console.log('vibration enabled:', vibrationEnabled);
-                  console.log("sound enabled:", soundEnabled);
-                  console.log("soundEnabled ? \"default\" : null:", (soundEnabled ? "default" : null));
+                    console.log("stop:",stop);
+                  console.log("stop.lat:", stop.stop_lat, "stop.lon:", stop.stop_lon);
                   // Create notification message
                   const message = {
                     to: validToken,
@@ -298,7 +299,9 @@ class NotificationService {
                       distance: Math.round(stop.distance),
                       vibrate: vibrationEnabled,
                       subscriptionId: subscription._id,
-                      type: "proximity_alert"
+                      type: "proximity_alert",
+                      stop_lat: stop.stop_lat,
+                      stop_lon: stop.stop_lon,
                     },
                     priority: "high",
                   };

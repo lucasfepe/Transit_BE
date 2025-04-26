@@ -3,6 +3,7 @@ import { getTripModel } from '../models/Trip.js';
 import { getStopOrderModel } from '../models/StopOrder.js';
 import { getStopModel } from '../models/Stop.js';
 import cacheService from '../services/cache.service.js';
+import { findStopByStopId } from '../services/stop.service.js';
 
 // Add a new cache property to the cacheService for route stops
 if (!cacheService.routeStopsCache) {
@@ -108,6 +109,35 @@ const stopController = {
             
         } catch (error) {
             console.error('Error finding stops for route:', error);
+            res.status(500).json({ message: error.message });
+        }
+    },
+    getStopByStopId: async(req, res, next) => {
+        try {
+            const { stop_id } = req.params;
+            
+            if (!stop_id) {
+                return res.status(400).json({ 
+                    message: 'Stop ID is required' 
+                });
+            }
+            
+            console.log("Getting stop with ID:", stop_id);
+            
+            // Use the service method to find the stop
+            const stop = await findStopByStopId(stop_id);
+            
+            if (!stop) {
+                return res.status(404).json({ 
+                    message: 'Stop not found' 
+                });
+            }
+            
+            // Return the found stop
+            res.json(stop);
+            
+        } catch (error) {
+            console.error('Error finding stop by ID:', error);
             res.status(500).json({ message: error.message });
         }
     }
