@@ -136,3 +136,5 @@ dist
 .pnp.*
 firebase_key.json
 diff.txt
+.env
+.DS_Store
