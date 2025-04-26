@@ -4,7 +4,7 @@ import vehicleTrackingService from '../services/vehicleTracking.service.js';
 export const getVehiclesNearLocation = async (req, res, next) => {
   try {
     const { lat, lon, radius = 1 } = req.query;
-
+    //radius in km, default to 1km
     if (!lat || !lon) {
       return res.status(400).json({
         success: false,
@@ -15,7 +15,7 @@ export const getVehiclesNearLocation = async (req, res, next) => {
 
     const latitude = parseFloat(lat);
     const longitude = parseFloat(lon);
-    const radiusInMeters = parseFloat(radius) * 1609.34; // Convert miles to meters
+    const radiusInMeters = parseFloat(radius) * 1000; // Convert km to meters
 
     // Get vehicles from the tracking service
     const vehicles = await vehicleTrackingService.getVehiclesNearLocation(latitude, longitude, radiusInMeters);
