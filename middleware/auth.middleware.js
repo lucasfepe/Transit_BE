@@ -8,7 +8,6 @@ import { getUserByFirebaseUid, createUser, updateLastLogin } from '../services/u
 export const isAuthenticated = async (req, res, next) => {
     // Get the ID token from the Authorization header
     const idToken = req.headers.authorization?.split('Bearer ')[1];
-
     if (!idToken) {
         return res.status(401).json({ error: 'No token provided' });
     }
@@ -16,13 +15,13 @@ export const isAuthenticated = async (req, res, next) => {
     try {
         // Verify the ID token
         const decodedToken = await admin.auth().verifyIdToken(idToken);
-        
+
         // Attach the Firebase user to the request object
         req.user = decodedToken;
-        
+
         // Check if user exists in MongoDB
         const user = await getUserByFirebaseUid(decodedToken.uid);
-        
+
         if (!user) {
             // First-time user - create record in MongoDB
             const newUser = await createUser({
@@ -31,7 +30,7 @@ export const isAuthenticated = async (req, res, next) => {
                 displayName: decodedToken.name || decodedToken.email?.split('@')[0],
                 lastLogin: new Date()
             });
-            
+
             // Optionally attach MongoDB user to request
             req.mongoUser = newUser;
         } else {
@@ -44,7 +43,7 @@ export const isAuthenticated = async (req, res, next) => {
                 req.mongoUser = user;
             }
         }
-        
+
         next();
     } catch (error) {
         console.error('Error verifying Firebase ID token:', error);
@@ -66,18 +65,18 @@ export const isAdmin = async (req, res, next) => {
     try {
         // Verify the ID token
         const decodedToken = await admin.auth().verifyIdToken(idToken);
-        
+
         // Check if the user has the admin claim
         if (decodedToken.admin !== true) {
             return res.status(403).json({ error: 'Admin access required' });
         }
-        
+
         // Attach the Firebase user to the request object
         req.user = decodedToken;
-        
+
         // Check if user exists in MongoDB
         const user = await getUserByFirebaseUid(decodedToken.uid);
-        
+
         if (!user) {
             // First-time admin user - create record in MongoDB
             const newUser = await createUser({
@@ -87,7 +86,7 @@ export const isAdmin = async (req, res, next) => {
                 isAdmin: true,
                 lastLogin: new Date()
             });
-            
+
             req.mongoUser = newUser;
         } else {
             // Existing admin user - update last login time (throttled)
@@ -98,13 +97,13 @@ export const isAdmin = async (req, res, next) => {
             } else {
                 req.mongoUser = user;
             }
-            
+
             // Ensure admin status is synced
             if (!user.isAdmin) {
                 await updateUser(decodedToken.uid, { isAdmin: true });
             }
         }
-        
+
         next();
     } catch (error) {
         console.error('Error verifying Firebase ID token:', error);
