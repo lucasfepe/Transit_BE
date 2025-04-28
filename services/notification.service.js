@@ -37,6 +37,44 @@ class NotificationService {
     this.notificationQueue = [];
     this.processingQueue = false;
   }
+  isExpoToken(token) {
+    return token && (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken['));
+  }
+
+  async sendFCMNotification(token, title, body, data = {}) {
+    try {
+      // Ensure all data values are strings for FCM
+      const fcmData = {};
+      for (const key in data) {
+        // Convert all values to strings as required by FCM
+        fcmData[key] = data[key] === null ? '' : String(data[key]);
+      }
+
+      const message = {
+        token,
+        notification: {
+          title,
+          body
+        },
+        data: fcmData,
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'transit-alerts',
+            sound: data.sound !== false ? 'default' : null
+          }
+        }
+      };
+
+      const response = await admin.messaging().send(message);
+      console.log('Successfully sent FCM message:', response);
+      return true;
+    } catch (error) {
+      console.error('Error sending FCM message:', error);
+      return false;
+    }
+  }
+
 
   // Process vehicle locations and send notifications
   async processVehicleLocations(vehicles) {
@@ -365,54 +403,88 @@ class NotificationService {
       this.processingQueue = true;
       console.log(`Processing notification queue with ${this.notificationQueue.length} messages (retry: ${retryCount})`);
 
-      // Create chunks of notifications (Expo has a limit)
-      const chunks = this.expo.chunkPushNotifications(this.notificationQueue);
-      console.log(`Created ${chunks.length} chunks for sending`);
+      // Separate Expo tokens from FCM tokens
+      const expoNotifications = this.notificationQueue.filter(msg => this.isExpoToken(msg.to));
+      const fcmNotifications = this.notificationQueue.filter(msg => !this.isExpoToken(msg.to));
 
-      // Store failed notifications for retry
-      const failedNotifications = [];
+      console.log(`Found ${expoNotifications.length} Expo notifications and ${fcmNotifications.length} FCM notifications`);
 
       // Clear the queue
       const notificationsToProcess = [...this.notificationQueue];
       this.notificationQueue = [];
 
-      // Send each chunk
-      for (const chunk of chunks) {
+      // Store failed notifications for retry
+      const failedNotifications = [];
+
+      // Process Expo notifications
+      if (expoNotifications.length > 0) {
         try {
-          console.log(`Sending chunk with ${chunk.length} notifications`);
-          const ticketChunk = await this.expo.sendPushNotificationsAsync(chunk);
-          console.log(`Successfully sent ${ticketChunk.length} notifications`);
+          // Create chunks of notifications (Expo has a limit)
+          const chunks = this.expo.chunkPushNotifications(expoNotifications);
+          console.log(`Created ${chunks.length} Expo chunks for sending`);
 
-          // Add a small delay between chunks
-          if (chunks.length > 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
+          // Send each chunk
+          for (const chunk of chunks) {
+            try {
+              console.log(`Sending Expo chunk with ${chunk.length} notifications`);
+              const ticketChunk = await this.expo.sendPushNotificationsAsync(chunk);
+              console.log(`Successfully sent ${ticketChunk.length} Expo notifications`);
 
-          // Handle tickets (for error checking, etc.)
-          for (let i = 0; i < ticketChunk.length; i++) {
-            const ticket = ticketChunk[i];
+              // Handle tickets (for error checking, etc.)
+              for (let i = 0; i < ticketChunk.length; i++) {
+                const ticket = ticketChunk[i];
 
-            if (ticket.status === "error") {
-              console.error(`Error sending notification: ${ticket.message}`);
+                if (ticket.status === "error") {
+                  console.error(`Error sending Expo notification: ${ticket.message}`);
 
-              // Add to failed notifications for retry
-              failedNotifications.push(chunk[i]);
+                  // Add to failed notifications for retry
+                  failedNotifications.push(chunk[i]);
 
-              // Handle specific errors
-              if (
-                ticket.details &&
-                ticket.details.error === "DeviceNotRegistered"
-              ) {
-                // Remove invalid token
-                const token = chunk[i].to;
-                await this.removeInvalidToken(token);
+                  // Handle specific errors
+                  if (ticket.details && ticket.details.error === "DeviceNotRegistered") {
+                    // Remove invalid token
+                    const token = chunk[i].to;
+                    await this.removeInvalidToken(token);
+                  }
+                }
               }
+            } catch (error) {
+              console.error("Error sending Expo notification chunk:", error);
+              // Add all notifications in this chunk to failed notifications
+              failedNotifications.push(...chunk);
             }
           }
         } catch (error) {
-          console.error("Error sending notification chunk:", error);
-          // Add all notifications in this chunk to failed notifications
-          failedNotifications.push(...chunk);
+          console.error("Error processing Expo notifications:", error);
+          failedNotifications.push(...expoNotifications);
+        }
+      }
+
+      // Process FCM notifications
+      if (fcmNotifications.length > 0) {
+        console.log(`Processing ${fcmNotifications.length} FCM notifications`);
+
+        // Process FCM notifications one by one to avoid batch failures
+        for (const notification of fcmNotifications) {
+          try {
+            // Convert the Expo notification format to FCM format
+            const success = await this.sendFCMNotification(
+              notification.to,
+              notification.title,
+              notification.body,
+              notification.data || {}
+            );
+
+            if (!success) {
+              failedNotifications.push(notification);
+            }
+          } catch (error) {
+            console.error("Error sending FCM notification:", error);
+            failedNotifications.push(notification);
+          }
+
+          // Add a small delay between notifications to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
 
@@ -428,6 +500,24 @@ class NotificationService {
       console.error("Error processing notification queue:", error);
     } finally {
       this.processingQueue = false;
+    }
+  }
+
+  async removeInvalidToken(token) {
+    try {
+      const User = getUserModel();
+
+      // Find and remove this token from any users
+      const result = await User.updateMany(
+        { 'pushTokens.token': token },
+        { $pull: { pushTokens: { token: token } } }
+      );
+
+      console.log(`Removed invalid token ${token} from ${result.modifiedCount} users`);
+      return result.modifiedCount > 0;
+    } catch (error) {
+      console.error(`Error removing invalid token ${token}:`, error);
+      return false;
     }
   }
 
@@ -460,31 +550,49 @@ class NotificationService {
 
   // Method to directly test sending a notification to a specific token
   async sendTestNotification(token) {
-    if (!Expo.isExpoPushToken(token)) {
-      console.error(`Invalid Expo push token: ${token}`);
+    if (!token) {
+      console.error('No token provided for test notification');
       return false;
     }
 
-    const message = {
-      to: token,
-      sound: 'default',
-      title: 'Test Notification',
-      body: 'This is a test notification',
-      data: { test: true },
-      priority: 'high',
-    };
+    const isExpo = this.isExpoToken(token);
+    console.log(`Sending test notification to ${isExpo ? 'Expo' : 'FCM'} token: ${token}`);
 
-    try {
-      const chunks = this.expo.chunkPushNotifications([message]);
-      const [ticketChunk] = await Promise.all(
-        chunks.map(chunk => this.expo.sendPushNotificationsAsync(chunk))
+    if (isExpo) {
+      if (!Expo.isExpoPushToken(token)) {
+        console.error(`Invalid Expo push token: ${token}`);
+        return false;
+      }
+
+      const message = {
+        to: token,
+        sound: 'default',
+        title: 'Test Notification',
+        body: 'This is a test notification',
+        data: { test: true },
+        priority: 'high',
+      };
+
+      try {
+        const chunks = this.expo.chunkPushNotifications([message]);
+        const [ticketChunk] = await Promise.all(
+          chunks.map(chunk => this.expo.sendPushNotificationsAsync(chunk))
+        );
+
+        console.log('Test notification result:', ticketChunk);
+        return ticketChunk[0].status === 'ok';
+      } catch (error) {
+        console.error('Error sending Expo test notification:', error);
+        return false;
+      }
+    } else {
+      // For FCM tokens
+      return this.sendFCMNotification(
+        token,
+        'Test Notification',
+        'This is a test notification sent via FCM',
+        { test: true }
       );
-
-      console.log('Test notification result:', ticketChunk);
-      return ticketChunk[0].status === 'ok';
-    } catch (error) {
-      console.error('Error sending test notification:', error);
-      return false;
     }
   }
 }

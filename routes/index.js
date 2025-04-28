@@ -6,6 +6,7 @@ import userRoutes from './user.routes.js';
 import subscriptionRoutes from './subscription.routes.js';
 import stopRoutes from './stop.routes.js';
 import vehicleRoutes from './vehicle.routes.js';
+import notificationRoutes from './notification.routes.js';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/users', userRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/stops', stopRoutes);
 router.use('/vehicles', vehicleRoutes);
+router.post('/notifications', notificationRoutes);
 
 export default router;
