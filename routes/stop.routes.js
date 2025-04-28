@@ -7,5 +7,6 @@ const router = Router();
 
 // Lightweight endpoint for trip-to-route mappings
 router.get('/route/:routeId', isAuthenticated, stopController.getStopsByRouteId);
+router.get('/:stop_id', isAuthenticated, stopController.getStopByStopId);
 
 export default router;

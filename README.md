@@ -94,3 +94,8 @@ The backend provides an endpoint named `/tripmapping` designed to map trip IDs t
     - This ensures that even infrequently used trips are **eventually refreshed**, preventing stale mappings.
 
 - This design promotes **performance optimization** by minimizing database hits and improving user response time.
+
+features:
+
+authenticated routes
+admin routes
