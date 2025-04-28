@@ -354,6 +354,7 @@ class NotificationService {
   }
 
   // Process notification queue with retry mechanism
+  // Process notification queue with retry mechanism
   async processNotificationQueue(retryCount = 0) {
     try {
       if (this.processingQueue) {
@@ -364,94 +365,54 @@ class NotificationService {
       this.processingQueue = true;
       console.log(`Processing notification queue with ${this.notificationQueue.length} messages (retry: ${retryCount})`);
 
+      // Create chunks of notifications (Expo has a limit)
+      const chunks = this.expo.chunkPushNotifications(this.notificationQueue);
+      console.log(`Created ${chunks.length} chunks for sending`);
+
       // Store failed notifications for retry
       const failedNotifications = [];
-
-      // Process in batches of 500 (FCM recommendation)
-      const batchSize = 500;
-      const batches = [];
-
-      // Create batches of notifications
-      for (let i = 0; i < this.notificationQueue.length; i += batchSize) {
-        batches.push(this.notificationQueue.slice(i, i + batchSize));
-      }
 
       // Clear the queue
       const notificationsToProcess = [...this.notificationQueue];
       this.notificationQueue = [];
 
-      console.log(`Processing ${batches.length} batches of notifications`);
-
-      // Process each batch
-      for (const batch of batches) {
+      // Send each chunk
+      for (const chunk of chunks) {
         try {
-          console.log(`Sending batch with ${batch.length} notifications`);
+          console.log(`Sending chunk with ${chunk.length} notifications`);
+          const ticketChunk = await this.expo.sendPushNotificationsAsync(chunk);
+          console.log(`Successfully sent ${ticketChunk.length} notifications`);
 
-          // Process each notification in the batch
-          const sendPromises = batch.map(async (message) => {
-            try {
-              // Convert all data values to strings
-              const stringifiedData = {};
-              if (message.data) {
-                Object.keys(message.data).forEach(key => {
-                  stringifiedData[key] = String(message.data[key]);
-                });
-              }
-
-              // Convert Expo message format to FCM format
-              const fcmMessage = {
-                token: this.extractTokenFromExpoToken(message.to), // Get device token from Expo token
-                notification: {
-                  title: message.title,
-                  body: message.body,
-                },
-                data: stringifiedData, // Use the stringified data
-                android: {
-                  priority: message.priority === 'high' ? 'high' : 'normal',
-                  notification: {
-                    sound: message.sound === 'default' ? 'default' : null,
-                    // Add other Android specific settings as needed
-                  }
-                },
-                // Add apns configuration for iOS if needed
-              };
-
-              // Send message
-              const response = await admin.messaging().send(fcmMessage);
-              return { status: 'success', messageId: response, original: message };
-            } catch (error) {
-              console.error(`Error sending notification: ${error.message}`);
-
-              // Check for specific errors
-              if (error.code === 'messaging/registration-token-not-registered') {
-                // Token is no longer valid
-                await this.removeInvalidToken(message.to);
-              }
-
-              return { status: 'error', error: error.message, original: message };
-            }
-          });
-
-          // Wait for all send operations to complete
-          const results = await Promise.all(sendPromises);
-
-          // Add failed notifications for retry
-          for (const result of results) {
-            if (result.status === 'error') {
-              failedNotifications.push(result.original);
-            }
-          }
-
-          console.log(`Successfully processed batch: ${results.filter(r => r.status === 'success').length} succeeded, ${results.filter(r => r.status === 'error').length} failed`);
-
-          // Add a small delay between batches
-          if (batches.length > 1) {
+          // Add a small delay between chunks
+          if (chunks.length > 1) {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
+
+          // Handle tickets (for error checking, etc.)
+          for (let i = 0; i < ticketChunk.length; i++) {
+            const ticket = ticketChunk[i];
+
+            if (ticket.status === "error") {
+              console.error(`Error sending notification: ${ticket.message}`);
+
+              // Add to failed notifications for retry
+              failedNotifications.push(chunk[i]);
+
+              // Handle specific errors
+              if (
+                ticket.details &&
+                ticket.details.error === "DeviceNotRegistered"
+              ) {
+                // Remove invalid token
+                const token = chunk[i].to;
+                await this.removeInvalidToken(token);
+              }
+            }
+          }
         } catch (error) {
-          console.error("Error sending notification batch:", error);
-          // Add all notifications in this batch to failed notifications
-          failedNotifications.push(...batch);
+          console.error("Error sending notification chunk:", error);
+          // Add all notifications in this chunk to failed notifications
+          failedNotifications.push(...chunk);
         }
       }
 
