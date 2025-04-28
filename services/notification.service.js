@@ -390,6 +390,14 @@ class NotificationService {
           // Process each notification in the batch
           const sendPromises = batch.map(async (message) => {
             try {
+              // Convert all data values to strings
+              const stringifiedData = {};
+              if (message.data) {
+                Object.keys(message.data).forEach(key => {
+                  stringifiedData[key] = String(message.data[key]);
+                });
+              }
+
               // Convert Expo message format to FCM format
               const fcmMessage = {
                 token: this.extractTokenFromExpoToken(message.to), // Get device token from Expo token
@@ -397,7 +405,7 @@ class NotificationService {
                   title: message.title,
                   body: message.body,
                 },
-                data: message.data,
+                data: stringifiedData, // Use the stringified data
                 android: {
                   priority: message.priority === 'high' ? 'high' : 'normal',
                   notification: {
@@ -459,22 +467,6 @@ class NotificationService {
       console.error("Error processing notification queue:", error);
     } finally {
       this.processingQueue = false;
-    }
-  }
-  // Remove invalid token
-  async removeInvalidToken(token) {
-    try {
-      const User = getUserModel();
-
-      // Find and update user with this token
-      await User.updateMany(
-        { "pushTokens.token": token },
-        { $pull: { pushTokens: { token } } }
-      );
-
-      console.log(`Removed invalid token: ${token}`);
-    } catch (error) {
-      console.error("Error removing invalid token:", error);
     }
   }
 
