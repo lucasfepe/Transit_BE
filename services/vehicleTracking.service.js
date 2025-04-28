@@ -100,10 +100,10 @@ class VehicleTrackingService {
     // Check if we need to refresh the cache (if it's been more than 30 seconds)
     const now = Date.now();
     const thirtySeconds = 30 * 1000;
-
+    console.log("getVehiclesNearLocation");
     if (this.vehicleCache.length === 0 || now - this.lastSuccessfulFetch > thirtySeconds) {
       console.log('Cache expired or empty, fetching fresh data from government API');
-      await this.fetchVehicleLocations(false); // false means don't filter by subscriptions
+      await this.fetchVehicleLocations(); // false means don't filter by subscriptions
     } else {
       console.log(`Using cached vehicle data (${Math.round((now - this.lastSuccessfulFetch) / 1000)}s old)`);
     }
@@ -164,7 +164,7 @@ class VehicleTrackingService {
 
 
   // Fetch vehicle locations from government API
-  async fetchVehicleLocations(filterBySubscriptions = true) {
+  async fetchVehicleLocations(filterBySubscriptions = false) {
     try {
       // Check if we've had too many consecutive failures
       if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
@@ -296,6 +296,7 @@ class VehicleTrackingService {
       } else {
         // For complete fetch (not filtered), replace the entire cache
         this.vehicleCache = vehicles;
+        await notificationService.processVehicleLocations(vehicles);
       }
 
       // Reset failure counter and update last successful fetch time
