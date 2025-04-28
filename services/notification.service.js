@@ -4,7 +4,7 @@ import { getUserModel } from "../models/User.js";
 import { getSubscriptionModel } from "../models/Subscription.js";
 import { getStopModel } from "../models/Stop.js";
 import tripMappingService from "../services/tripMapping.service.js";
-import admin from "../config/firebase.js";
+import admin from "../firebaseAdmin.js";
 
 // Log environment information
 console.log(`Running in ${process.env.NODE_ENV || 'development'} environment`);
