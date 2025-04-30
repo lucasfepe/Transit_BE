@@ -8,7 +8,8 @@ import {
     removePushToken,
     toggleNotifications,
     getNotificationSettings,
-    updateNotificationSettings
+    updateNotificationSettings,
+    deleteUserAccount
 } from '../controllers/user.controller.js';
 import { isAuthenticated, isAdmin } from '../middleware/auth.middleware.js';
 
