@@ -1,7 +1,7 @@
 // controllers/user.controller.js
 import { getUserByFirebaseUid, updateUser, getAllUsers, deleteUser } from '../services/user.service.js';
 import { getUserModel } from '../models/User.js';
-
+import { getSubscriptionModel } from '../models/Subscription.js';
 /**
  * Get the current user's profile
  */
@@ -26,15 +26,16 @@ export const getUserProfile = async (req, res, next) => {
  */
 export const deleteUserAccount = async (req, res, next) => {
     try {
+        console.log("deleting account");
         const userId = req.user.uid;
 
         // 1. Delete all user's subscriptions
         const Subscription = getSubscriptionModel();
         await Subscription.deleteMany({ userId });
-
+        console.log("deleted subscriptions");
         // 2. Delete the user from MongoDB
         const result = await deleteUser(userId);
-
+        console.log("deleted user");
         if (!result) {
             return res.status(404).json({ error: 'User not found' });
         }
