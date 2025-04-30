@@ -1,8 +1,8 @@
 // routes/user.routes.js
 import express from 'express';
-import { 
-    getUserProfile, 
-    updateUserProfile, 
+import {
+    getUserProfile,
+    updateUserProfile,
     getUsers,
     addPushToken,
     removePushToken,
@@ -17,6 +17,8 @@ const router = express.Router();
 // User profile routes (for authenticated users)
 router.get('/profile', isAuthenticated, getUserProfile);
 router.put('/profile', isAuthenticated, updateUserProfile);
+// Add this to your existing routes
+router.delete('/delete-account', isAuthenticated, deleteUserAccount);
 
 // Push notification endpoints
 router.post('/push-token', isAuthenticated, addPushToken);
