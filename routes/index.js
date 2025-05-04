@@ -17,6 +17,6 @@ router.use('/users', userRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/stops', stopRoutes);
 router.use('/vehicles', vehicleRoutes);
-router.post('/notifications', notificationRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;

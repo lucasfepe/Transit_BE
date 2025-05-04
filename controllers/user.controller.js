@@ -90,9 +90,11 @@ export const getUsers = async (req, res, next) => {
 /**
  * Add push token to user
  */
+// Modified addPushToken function
+// Modified addPushToken in user.controller.js
 export const addPushToken = async (req, res, next) => {
     try {
-        const { pushToken } = req.body;
+        const { pushToken, deviceInfo } = req.body;
         const userId = req.user.uid;
 
         if (!pushToken) {
@@ -100,8 +102,6 @@ export const addPushToken = async (req, res, next) => {
         }
 
         const User = getUserModel();
-
-        // Find user
         const user = await User.findOne({ firebaseUid: userId });
 
         if (!user) {
@@ -113,14 +113,41 @@ export const addPushToken = async (req, res, next) => {
             user.pushTokens = [];
         }
 
+        // If deviceInfo is provided, check for existing tokens for this device
+        if (deviceInfo && deviceInfo.deviceId) {
+            // Find if we have a token for this device already
+            const deviceTokenIndex = user.pushTokens.findIndex(
+                t => t.deviceId === deviceInfo.deviceId
+            );
+
+            if (deviceTokenIndex >= 0) {
+                // Update existing token for this device
+                user.pushTokens[deviceTokenIndex].token = pushToken;
+                user.pushTokens[deviceTokenIndex].lastUsed = new Date(); // Note this matches your schema
+                user.pushTokens[deviceTokenIndex].platform = deviceInfo.platform || user.pushTokens[deviceTokenIndex].platform;
+                user.pushTokens[deviceTokenIndex].deviceName = deviceInfo.deviceName || user.pushTokens[deviceTokenIndex].deviceName;
+                
+                await user.save();
+                
+                return res.status(200).json({
+                    message: 'Push token updated successfully',
+                    success: true
+                });
+            }
+        }
+
         // Check if token already exists
         const tokenExists = user.pushTokens.some(t => t.token === pushToken);
 
         if (!tokenExists) {
-            // Add new token
+            // Add new token with device info
             user.pushTokens.push({
                 token: pushToken,
-                createdAt: new Date()
+                deviceId: deviceInfo?.deviceId,
+                deviceName: deviceInfo?.deviceName,
+                platform: deviceInfo?.platform,
+                createdAt: new Date(),
+                lastUsed: new Date() // matches your schema
             });
             await user.save();
         }
@@ -139,19 +166,28 @@ export const addPushToken = async (req, res, next) => {
  */
 export const removePushToken = async (req, res, next) => {
     try {
-        const { pushToken } = req.body;
+        const { pushToken, deviceId } = req.body;
         const userId = req.user.uid;
 
-        if (!pushToken) {
-            return res.status(400).json({ error: 'Push token is required' });
+        if (!pushToken && !deviceId) {
+            return res.status(400).json({ error: 'Either push token or device ID is required' });
         }
 
         const User = getUserModel();
+        let updateQuery = {};
+
+        if (deviceId) {
+            // Remove token by device ID
+            updateQuery = { $pull: { pushTokens: { deviceId } } };
+        } else {
+            // Remove token by token value
+            updateQuery = { $pull: { pushTokens: { token: pushToken } } };
+        }
 
         // Find and update user
         const result = await User.updateOne(
             { firebaseUid: userId },
-            { $pull: { pushTokens: { token: pushToken } } }
+            updateQuery
         );
 
         if (result.matchedCount === 0) {

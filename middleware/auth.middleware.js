@@ -1,6 +1,6 @@
 // middleware/auth.middleware.js
 import admin from '../firebaseAdmin.js';
-import { getUserByFirebaseUid, createUser, updateLastLogin } from '../services/user.service.js';
+import { getUserByFirebaseUid, createUser, updateLastLogin, updateUser } from '../services/user.service.js';
 
 /**
  * Middleware to verify Firebase authentication and automatically create/update user in MongoDB
@@ -56,6 +56,7 @@ export const isAuthenticated = async (req, res, next) => {
  */
 export const isAdmin = async (req, res, next) => {
     // First ensure the user is authenticated
+    console.log('Checking admin privileges...');
     const idToken = req.headers.authorization?.split('Bearer ')[1];
 
     if (!idToken) {

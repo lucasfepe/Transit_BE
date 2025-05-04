@@ -29,7 +29,21 @@ const userSchema = new mongoose.Schema({
       type: String,
       required: true
     },
+    deviceId: {
+      type: String
+    },
+    deviceName: {
+      type: String
+    },
+    platform: {
+      type: String,
+      enum: ['ios', 'android', 'web']
+    },
     createdAt: {
+      type: Date,
+      default: Date.now
+    },
+    lastUsed: {
       type: Date,
       default: Date.now
     }

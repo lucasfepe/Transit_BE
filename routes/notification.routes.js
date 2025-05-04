@@ -1,13 +1,11 @@
-
-
-// routes/route.routes.js
+// routes/notification.routes.js
 import { Router } from 'express';
 import notificationsController from '../controllers/notification.controller.js';
-import { isAuthenticated } from '../middleware/auth.middleware.js';
+import { isAdmin } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-router.get('/test', isAuthenticated, notificationsController.testNotification);
-
+// Test notification to a specific token
+router.post('/test', isAdmin, notificationsController.testNotification);
 
 export default router;

@@ -21,7 +21,7 @@ async function main() {
     const auth = getAuth(app);
     
     // The UID of the user you want to make an admin
-    const uid = 'LX0thCXj36XfqFeC99wdtuZ7hSn1';
+    const uid = 'rK4bVm3Gs1a1MIz1s9wmp8KGQAk1';
     
     // Set custom claims
     await auth.setCustomUserClaims(uid, { admin: true });

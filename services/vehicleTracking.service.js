@@ -1,7 +1,7 @@
 // services/vehicleTracking.service.js
 import axios from 'axios';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
-import notificationService from './notification.service.js';
+import notificationService from './notification/index.js';
 import tripMappingService from './tripMapping.service.js';
 import { getSubscriptionModel } from '../models/Subscription.js';
 

@@ -1,32 +1,45 @@
-import notificationService from '../services/notification.service.js';
-
-// controllers/route.controller.js
+import notificationService from '../services/notification/index.js';
 
 // Create a controller object with methods
 const notificationsController = {
     testNotification: async (req, res) => {
         try {
+            console.log('Received test notification request:', req.body);
             const { token } = req.body;
 
             if (!token) {
-                return res.status(400).json({ success: false, message: 'Token is required' });
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Token is required' 
+                });
             }
 
-            // Use the sendTestNotification method which now supports both FCM and Expo tokens
-            const success = await notificationService.sendTestNotification(token);
+            // Send a test notification to the specific token
+            const success = await notificationService.sendTestNotification(
+                token,
+                'Test Notification', 
+                'This is a test notification for your device'
+            );
 
             if (success) {
-                res.json({ success: true, message: 'Test notification sent successfully' });
+                res.json({ 
+                    success: true, 
+                    message: 'Test notification sent successfully' 
+                });
             } else {
-                res.status(500).json({ success: false, message: 'Failed to send test notification' });
+                res.status(500).json({ 
+                    success: false, 
+                    message: 'Failed to send test notification' 
+                });
             }
         } catch (error) {
             console.error('Error sending test notification:', error);
-            res.status(500).json({ success: false, message: 'Server error' });
+            res.status(500).json({ 
+                success: false, 
+                message: 'Server error' 
+            });
         }
     }
 };
 
-
-// Export the controller object as default
 export default notificationsController;
