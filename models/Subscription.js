@@ -1,4 +1,3 @@
-// models/Subscription.js
 import mongoose from 'mongoose';
 import { getDatabase } from "../db.js";
 
@@ -49,11 +48,41 @@ const subscriptionSchema = new mongoose.Schema({
   },
   createdAt: {
     type: Date,
-    default: Date.now
+    default: () => {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Edmonton',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      const parts = formatter.formatToParts(now);
+      const calgaryTimeStr = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}-${parts.find(p => p.type === 'day').value}T${parts.find(p => p.type === 'hour').value}:${parts.find(p => p.type === 'minute').value}:${parts.find(p => p.type === 'second').value}`;
+      return new Date(calgaryTimeStr);
+    }
   },
   updatedAt: {
     type: Date,
-    default: Date.now
+    default: () => {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Edmonton',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      const parts = formatter.formatToParts(now);
+      const calgaryTimeStr = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}-${parts.find(p => p.type === 'day').value}T${parts.find(p => p.type === 'hour').value}:${parts.find(p => p.type === 'minute').value}:${parts.find(p => p.type === 'second').value}`;
+      return new Date(calgaryTimeStr);
+    }
   },
   // Fields for tracking notification history
   lastNotifiedVehicleId: {
@@ -83,13 +112,26 @@ subscriptionSchema.index({
   lastNotifiedVehicleId: 1 
 });
 
-// Update the updatedAt field on save
+// Update the updatedAt field on save to Calgary time
 subscriptionSchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Edmonton',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now);
+  const calgaryTimeStr = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}-${parts.find(p => p.type === 'day').value}T${parts.find(p => p.type === 'hour').value}:${parts.find(p => p.type === 'minute').value}:${parts.find(p => p.type === 'second').value}`;
+  this.updatedAt = new Date(calgaryTimeStr);
   next();
 });
 
-// Helper method to check if the subscription is active at the current time
+// Helper method to check if the subscription is active at the current time, using Calgary timezone
 subscriptionSchema.methods.isActiveAtTime = function(currentTime) {
   // Don't notify if subscription is not active
   if (!this.active) {
@@ -98,7 +140,19 @@ subscriptionSchema.methods.isActiveAtTime = function(currentTime) {
   
   // Check if current time is within any of the subscription time windows
   if (this.times && this.times.length > 0) {
-    const now = new Date(currentTime);
+    // Convert currentTime to Calgary timezone for comparison
+    const nowFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Edmonton',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const nowParts = nowFormatter.formatToParts(new Date(currentTime));
+    const now = new Date(`${nowParts.find(p => p.type === 'year').value}-${nowParts.find(p => p.type === 'month').value}-${nowParts.find(p => p.type === 'day').value}T${nowParts.find(p => p.type === 'hour').value}:${nowParts.find(p => p.type === 'minute').value}:${nowParts.find(p => p.type === 'second').value}`);
     const currentDay = now.getDay(); // 0-6, Sunday-Saturday
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
@@ -110,11 +164,21 @@ subscriptionSchema.methods.isActiveAtTime = function(currentTime) {
         return false;
       }
       
-      // Get hours and minutes from startTime and endTime
-      const startHour = timeWindow.startTime.getHours();
-      const startMinute = timeWindow.startTime.getMinutes();
-      const endHour = timeWindow.endTime.getHours();
-      const endMinute = timeWindow.endTime.getMinutes();
+      // Convert startTime and endTime to Calgary timezone for comparison
+      const startFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Edmonton',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      const startParts = startFormatter.formatToParts(timeWindow.startTime);
+      const endParts = startFormatter.formatToParts(timeWindow.endTime);
+      
+      // Get hours and minutes from startTime and endTime in Calgary time
+      const startHour = parseInt(startParts.find(p => p.type === 'hour').value, 10);
+      const startMinute = parseInt(startParts.find(p => p.type === 'minute').value, 10);
+      const endHour = parseInt(endParts.find(p => p.type === 'hour').value, 10);
+      const endMinute = parseInt(endParts.find(p => p.type === 'minute').value, 10);
       
       // Convert current time, start time, and end time to minutes for easy comparison
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
