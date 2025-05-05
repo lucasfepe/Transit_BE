@@ -27,7 +27,7 @@ class VehicleLocationProcessor {
 
       // Format the date and time in Calgary's timezone (America/Edmonton) for display
       const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Edmonton', // Calgary's timezone
+        timeZone: 'UTC',
         year: 'numeric',
         month: 'numeric',
         day: 'numeric',
@@ -57,7 +57,7 @@ class VehicleLocationProcessor {
       // Calgary is typically UTC-7 (MST) or UTC-6 (MDT) depending on Daylight Saving Time
       // Intl.DateTimeFormat handles DST automatically, so we use its output to build a timestamp
       // Properly format the date string with padded values for month and day
-      const calgaryTimeString = `${dateComponents.year}-${dateComponents.month.toString().padStart(2, '0')}-${dateComponents.day.toString().padStart(2, '0')}T${dateComponents.hour.toString().padStart(2, '0')}:${dateComponents.minute.toString().padStart(2, '0')}:${dateComponents.second.toString().padStart(2, '0')}`;
+      const calgaryTimeString = `${dateComponents.year}-${dateComponents.month.toString().padStart(2, '0')}-${dateComponents.day.toString().padStart(2, '0')}T${dateComponents.hour.toString().padStart(2, '0')}:${dateComponents.minute.toString().padStart(2, '0')}:${dateComponents.second.toString().padStart(2, '0')}Z`;
       console.log(`Calgary Time String: ${calgaryTimeString}`);
       const calgaryDateForLogic = new Date(calgaryTimeString);
       console.log(`Calgary Date for Logic: ${calgaryDateForLogic.toISOString()}`);

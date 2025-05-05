@@ -5,7 +5,7 @@ import { getStopModel } from '../models/Stop.js';
 
 export const createSubscription = async (subscriptionData) => {
   const Subscription = getSubscriptionModel();
-  
+  console.log('subscriptionData', subscriptionData);
   // Set default notification settings if not provided
   if (!subscriptionData.notificationSettings) {
     subscriptionData.notificationSettings = {
