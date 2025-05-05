@@ -35,6 +35,19 @@ class VehicleLocationProcessor {
       }
 
       // Filter subscriptions by day of week and time of day first
+
+      // Extract different components
+      const year = now.getFullYear(); // e.g., 2023
+      const month = now.getMonth() + 1; // getMonth() returns 0-11, so add 1 for 1-12
+      const day = now.getDate(); // Day of the month (1-31)
+      const hour = now.getHours(); // Hours (0-23)
+      const minute = now.getMinutes(); // Minutes (0-59)
+      const second = now.getSeconds(); // Seconds (0-59)
+      const dayOfWeek = now.getDay(); // Day of the week (0-6, where 0 is Sunday)
+
+      // Optionally, format it as a readable string
+      const formattedDate = `${month}/${day}/${year} ${hour}:${minute}:${second}`;
+      console.log(`Formatted Date: ${formattedDate}`);
       const timeFilteredSubscriptions = activeSubscriptions.filter(
         (subscription) => {
           // Use the subscription's isActiveAtTime method to check time windows
@@ -107,10 +120,10 @@ class VehicleLocationProcessor {
           }
 
           await this._processVehicleSubscriptions(
-            vehicle, 
-            routeSubscriptions, 
-            userMap, 
-            now, 
+            vehicle,
+            routeSubscriptions,
+            userMap,
+            now,
             subscriptionsToUpdate
           );
         })
@@ -182,9 +195,9 @@ class VehicleLocationProcessor {
 
     // Get route details and process stops
     await this._processRouteAndStops(
-      vehicle, 
-      eligibleSubscriptions, 
-      userMap, 
+      vehicle,
+      eligibleSubscriptions,
+      userMap,
       subscriptionsToUpdate
     );
   }
@@ -257,10 +270,10 @@ class VehicleLocationProcessor {
     // Process all stops and prepare notifications
     for (const stop of stopsWithDistance) {
       this._processStopAndPrepareNotifications(
-        stop, 
-        subscriptionsByStop, 
-        userMap, 
-        vehicle, 
+        stop,
+        subscriptionsByStop,
+        userMap,
+        vehicle,
         subscriptionsToUpdate
       );
     }
@@ -297,10 +310,10 @@ class VehicleLocationProcessor {
       }
 
       this._prepareNotificationsForUser(
-        user, 
-        subscription, 
-        vehicle, 
-        stop, 
+        user,
+        subscription,
+        vehicle,
+        stop,
         subscriptionsToUpdate
       );
     }
@@ -320,66 +333,66 @@ class VehicleLocationProcessor {
 
         // services/notification/processors/VehicleLocationProcessor.js (continued)
         if (this.tokenManager.isExpoToken(token)) {
-            console.log(`Valid Expo push token found: ${token}`);
-            expoTokens.push(token);
-          } else if (token) {
-            console.log(`FCM token found: ${token}`);
-            fcmTokens.push(token);
-          }
+          console.log(`Valid Expo push token found: ${token}`);
+          expoTokens.push(token);
+        } else if (token) {
+          console.log(`FCM token found: ${token}`);
+          fcmTokens.push(token);
         }
-  
-        // Get user's notification preferences
-        const soundEnabled = user.notificationSettings?.soundEnabled !== false;
-        const vibrationEnabled = user.notificationSettings?.vibrationEnabled !== false;
-  
-        // Create the notification message template
-        const messageTemplate = {
-          sound: soundEnabled ? "default" : null,
-          title: "Your Transit is Approaching",
-          body: `Route ${vehicle.routeId} is approaching stop #${stop.stopId} (${Math.round(stop.distance)}m away)`,
-          data: {
-            routeId: vehicle.routeId,
-            stopId: stop.stopId,
-            vehicleId: vehicle.id,
-            distance: Math.round(stop.distance),
-            vibrate: vibrationEnabled,
-            subscriptionId: subscription._id,
-            type: "proximity_alert",
-            stop_lat: stop.stop_lat,
-            stop_lon: stop.stop_lon,
-          },
-          priority: "high",
-        };
-  
-        // Add Expo notifications to queue
-        for (const token of expoTokens) {
-          const expoMessage = {
-            ...messageTemplate,
-            to: token
-          };
-          this.queueProcessor.addToQueue(expoMessage);
-        }
-  
-        // Add FCM notifications to queue
-        for (const token of fcmTokens) {
-          const fcmMessage = {
-            ...messageTemplate,
-            to: token
-          };
-          this.queueProcessor.addToQueue(fcmMessage);
-        }
-  
-        console.log(`Added ${expoTokens.length + fcmTokens.length} notifications to queue for user ${user.firebaseUid}`);
       }
-  
-      // Instead of saving immediately, add to the map of subscriptions to update
-      // Use subscription ID as key to ensure each subscription is only updated once
-      subscriptionsToUpdate.set(subscription._id.toString(), {
-        subscription,
-        lastNotifiedAt: new Date(),
-        notificationCount: (subscription.notificationCount || 0) + 1
-      });
+
+      // Get user's notification preferences
+      const soundEnabled = user.notificationSettings?.soundEnabled !== false;
+      const vibrationEnabled = user.notificationSettings?.vibrationEnabled !== false;
+
+      // Create the notification message template
+      const messageTemplate = {
+        sound: soundEnabled ? "default" : null,
+        title: "Your Transit is Approaching",
+        body: `Route ${vehicle.routeId} is approaching stop #${stop.stopId} (${Math.round(stop.distance)}m away)`,
+        data: {
+          routeId: vehicle.routeId,
+          stopId: stop.stopId,
+          vehicleId: vehicle.id,
+          distance: Math.round(stop.distance),
+          vibrate: vibrationEnabled,
+          subscriptionId: subscription._id,
+          type: "proximity_alert",
+          stop_lat: stop.stop_lat,
+          stop_lon: stop.stop_lon,
+        },
+        priority: "high",
+      };
+
+      // Add Expo notifications to queue
+      for (const token of expoTokens) {
+        const expoMessage = {
+          ...messageTemplate,
+          to: token
+        };
+        this.queueProcessor.addToQueue(expoMessage);
+      }
+
+      // Add FCM notifications to queue
+      for (const token of fcmTokens) {
+        const fcmMessage = {
+          ...messageTemplate,
+          to: token
+        };
+        this.queueProcessor.addToQueue(fcmMessage);
+      }
+
+      console.log(`Added ${expoTokens.length + fcmTokens.length} notifications to queue for user ${user.firebaseUid}`);
     }
+
+    // Instead of saving immediately, add to the map of subscriptions to update
+    // Use subscription ID as key to ensure each subscription is only updated once
+    subscriptionsToUpdate.set(subscription._id.toString(), {
+      subscription,
+      lastNotifiedAt: new Date(),
+      notificationCount: (subscription.notificationCount || 0) + 1
+    });
   }
-  
-  export default VehicleLocationProcessor;
+}
+
+export default VehicleLocationProcessor;
