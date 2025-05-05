@@ -16,169 +16,172 @@ class VehicleLocationProcessor {
 
   async process(vehicles) {
     try {
-        console.log(`Processing ${vehicles ? vehicles.length : 0} vehicles`);
+      console.log(`Processing ${vehicles ? vehicles.length : 0} vehicles`);
 
-        if (!vehicles || vehicles.length === 0) {
+      if (!vehicles || vehicles.length === 0) {
+        return;
+      }
+
+      // Get current time (system timezone initially)
+      const now = new Date();
+
+      // Format the date and time in Calgary's timezone (America/Edmonton) for display
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Edmonton', // Calgary's timezone
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false // 24-hour format
+      });
+
+      // Extract formatted components for display
+      const formattedParts = formatter.formatToParts(now);
+      const dateComponents = {
+        year: formattedParts.find(p => p.type === 'year').value,
+        month: formattedParts.find(p => p.type === 'month').value,
+        day: formattedParts.find(p => p.type === 'day').value,
+        hour: formattedParts.find(p => p.type === 'hour').value,
+        minute: formattedParts.find(p => p.type === 'minute').value,
+        second: formattedParts.find(p => p.type === 'second').value
+      };
+
+      // Display formatted date in Calgary time
+      const formattedDate = `${dateComponents.month}/${dateComponents.day}/${dateComponents.year} ${dateComponents.hour}:${dateComponents.minute}:${dateComponents.second}`;
+      console.log(`Formatted Date (Calgary): ${formattedDate}`);
+
+      // For filtering subscriptions, approximate a Date object in Calgary time
+      // This is a workaround since native JS can't directly set timezone for Date objects
+      // Calgary is typically UTC-7 (MST) or UTC-6 (MDT) depending on Daylight Saving Time
+      // Intl.DateTimeFormat handles DST automatically, so we use its output to build a timestamp
+      // Properly format the date string with padded values for month and day
+      const calgaryTimeString = `${dateComponents.year}-${dateComponents.month.toString().padStart(2, '0')}-${dateComponents.day.toString().padStart(2, '0')}T${dateComponents.hour.toString().padStart(2, '0')}:${dateComponents.minute.toString().padStart(2, '0')}:${dateComponents.second.toString().padStart(2, '0')}`;
+      console.log(`Calgary Time String: ${calgaryTimeString}`);
+      const calgaryDateForLogic = new Date(calgaryTimeString);
+      console.log(`Calgary Date for Logic: ${calgaryDateForLogic.toISOString()}`);
+      // Warning: This is an approximation and may not account for DST perfectly in logic.
+      // For precise logic with subscriptions, use a library like moment-timezone.
+
+      // Get all active subscriptions (no caching)
+      const Subscription = getSubscriptionModel();
+      const activeSubscriptions = await Subscription.find({ active: true });
+      console.log(`Active subscriptions: ${activeSubscriptions.length}`);
+
+      if (!activeSubscriptions || activeSubscriptions.length === 0) {
+        return; // No active subscriptions, no need to process vehicles
+      }
+
+      // Filter subscriptions by day of week and time of day using Calgary time
+      const timeFilteredSubscriptions = activeSubscriptions.filter(
+        (subscription) => {
+          // Use the subscription's isActiveAtTime method with Calgary-adjusted time
+          return subscription.isActiveAtTime(calgaryDateForLogic.getTime());
+        }
+      );
+      console.log(`Time-filtered subscriptions: ${timeFilteredSubscriptions.length}`);
+
+      if (timeFilteredSubscriptions.length === 0) {
+        return; // No subscriptions active at the current time
+      }
+
+      // Group subscriptions by route_id for faster lookup
+      const subscriptionsByRoute = {};
+      for (const sub of timeFilteredSubscriptions) {
+        if (!subscriptionsByRoute[sub.route_id]) {
+          subscriptionsByRoute[sub.route_id] = [];
+        }
+        subscriptionsByRoute[sub.route_id].push(sub);
+      }
+
+      // Get unique route IDs that have subscriptions
+      const routesWithSubscriptions = Object.keys(subscriptionsByRoute);
+      console.log(`Routes with subscriptions: ${routesWithSubscriptions.join(', ')}`);
+
+      // Filter vehicles to only those with routes that have subscriptions
+      const relevantVehicles = vehicles.filter(
+        (vehicle) =>
+          vehicle.routeId && routesWithSubscriptions.includes(vehicle.routeId)
+      );
+      console.log(`Found ${relevantVehicles.length} relevant vehicles with subscriptions`);
+
+      if (relevantVehicles.length === 0) {
+        return; // No vehicles on routes with subscriptions
+      }
+
+      const Stop = getStopModel();
+      const User = getUserModel();
+
+      // Fetch all users with active subscriptions to avoid multiple DB queries
+      const userIds = [
+        ...new Set(timeFilteredSubscriptions.map((sub) => sub.userId)),
+      ];
+      const users = await User.find({
+        firebaseUid: { $in: userIds },
+        notificationsEnabled: true, // Only get users with notifications enabled
+      });
+      console.log(`Found ${users.length} users with notifications enabled`);
+
+      // Create a map for faster user lookup
+      const userMap = {};
+      for (const user of users) {
+        userMap[user.firebaseUid] = user;
+      }
+
+      // Track subscriptions that need to be updated (using a Map to avoid duplicates)
+      const subscriptionsToUpdate = new Map();
+
+      // Process only relevant vehicles
+      await Promise.all(
+        relevantVehicles.map(async (vehicle) => {
+          console.log(`Processing vehicle for route ${vehicle.routeId}`);
+
+          // Get subscriptions for this route
+          const routeSubscriptions = subscriptionsByRoute[vehicle.routeId];
+
+          if (!routeSubscriptions || routeSubscriptions.length === 0) {
+            console.log(`No subscriptions found for route ${vehicle.routeId}`);
             return;
+          }
+
+          await this._processVehicleSubscriptions(
+            vehicle,
+            routeSubscriptions,
+            userMap,
+            calgaryDateForLogic, // Pass Calgary-adjusted time for consistency
+            subscriptionsToUpdate
+          );
+        })
+      );
+
+      console.log(`Added ${this.queueProcessor.notificationQueue.length} notifications to queue`);
+      console.log(`Need to update ${subscriptionsToUpdate.size} subscriptions`);
+
+      // Now update all subscriptions in sequence to avoid parallel save errors
+      for (const [id, data] of subscriptionsToUpdate.entries()) {
+        try {
+          const { subscription, lastNotifiedAt, notificationCount } = data;
+          subscription.lastNotifiedAt = lastNotifiedAt;
+          subscription.notificationCount = notificationCount;
+          await subscription.save();
+          console.log(`Updated subscription ${id}`);
+        } catch (error) {
+          console.error(`Error updating subscription ${id}:`, error);
         }
+      }
 
-        // Get current time (system timezone initially)
-        const now = new Date();
-
-        // Format the date and time in Calgary's timezone (America/Edmonton) for display
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'America/Edmonton', // Calgary's timezone
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false // 24-hour format
-        });
-
-        // Extract formatted components for display
-        const formattedParts = formatter.formatToParts(now);
-        const dateComponents = {
-            year: formattedParts.find(p => p.type === 'year').value,
-            month: formattedParts.find(p => p.type === 'month').value,
-            day: formattedParts.find(p => p.type === 'day').value,
-            hour: formattedParts.find(p => p.type === 'hour').value,
-            minute: formattedParts.find(p => p.type === 'minute').value,
-            second: formattedParts.find(p => p.type === 'second').value
-        };
-
-        // Display formatted date in Calgary time
-        const formattedDate = `${dateComponents.month}/${dateComponents.day}/${dateComponents.year} ${dateComponents.hour}:${dateComponents.minute}:${dateComponents.second}`;
-        console.log(`Formatted Date (Calgary): ${formattedDate}`);
-
-        // For filtering subscriptions, approximate a Date object in Calgary time
-        // This is a workaround since native JS can't directly set timezone for Date objects
-        // Calgary is typically UTC-7 (MST) or UTC-6 (MDT) depending on Daylight Saving Time
-        // Intl.DateTimeFormat handles DST automatically, so we use its output to build a timestamp
-        const calgaryTimeString = `${dateComponents.year}-${dateComponents.month}-${dateComponents.day}T${dateComponents.hour}:${dateComponents.minute}:${dateComponents.second}`;
-        const calgaryDateForLogic = new Date(calgaryTimeString);
-        // Warning: This is an approximation and may not account for DST perfectly in logic.
-        // For precise logic with subscriptions, use a library like moment-timezone.
-
-        // Get all active subscriptions (no caching)
-        const Subscription = getSubscriptionModel();
-        const activeSubscriptions = await Subscription.find({ active: true });
-        console.log(`Active subscriptions: ${activeSubscriptions.length}`);
-
-        if (!activeSubscriptions || activeSubscriptions.length === 0) {
-            return; // No active subscriptions, no need to process vehicles
-        }
-
-        // Filter subscriptions by day of week and time of day using Calgary time
-        const timeFilteredSubscriptions = activeSubscriptions.filter(
-            (subscription) => {
-                // Use the subscription's isActiveAtTime method with Calgary-adjusted time
-                return subscription.isActiveAtTime(calgaryDateForLogic.getTime());
-            }
-        );
-        console.log(`Time-filtered subscriptions: ${timeFilteredSubscriptions.length}`);
-
-        if (timeFilteredSubscriptions.length === 0) {
-            return; // No subscriptions active at the current time
-        }
-
-        // Group subscriptions by route_id for faster lookup
-        const subscriptionsByRoute = {};
-        for (const sub of timeFilteredSubscriptions) {
-            if (!subscriptionsByRoute[sub.route_id]) {
-                subscriptionsByRoute[sub.route_id] = [];
-            }
-            subscriptionsByRoute[sub.route_id].push(sub);
-        }
-
-        // Get unique route IDs that have subscriptions
-        const routesWithSubscriptions = Object.keys(subscriptionsByRoute);
-        console.log(`Routes with subscriptions: ${routesWithSubscriptions.join(', ')}`);
-
-        // Filter vehicles to only those with routes that have subscriptions
-        const relevantVehicles = vehicles.filter(
-            (vehicle) =>
-                vehicle.routeId && routesWithSubscriptions.includes(vehicle.routeId)
-        );
-        console.log(`Found ${relevantVehicles.length} relevant vehicles with subscriptions`);
-
-        if (relevantVehicles.length === 0) {
-            return; // No vehicles on routes with subscriptions
-        }
-
-        const Stop = getStopModel();
-        const User = getUserModel();
-
-        // Fetch all users with active subscriptions to avoid multiple DB queries
-        const userIds = [
-            ...new Set(timeFilteredSubscriptions.map((sub) => sub.userId)),
-        ];
-        const users = await User.find({
-            firebaseUid: { $in: userIds },
-            notificationsEnabled: true, // Only get users with notifications enabled
-        });
-        console.log(`Found ${users.length} users with notifications enabled`);
-
-        // Create a map for faster user lookup
-        const userMap = {};
-        for (const user of users) {
-            userMap[user.firebaseUid] = user;
-        }
-
-        // Track subscriptions that need to be updated (using a Map to avoid duplicates)
-        const subscriptionsToUpdate = new Map();
-
-        // Process only relevant vehicles
-        await Promise.all(
-            relevantVehicles.map(async (vehicle) => {
-                console.log(`Processing vehicle for route ${vehicle.routeId}`);
-
-                // Get subscriptions for this route
-                const routeSubscriptions = subscriptionsByRoute[vehicle.routeId];
-
-                if (!routeSubscriptions || routeSubscriptions.length === 0) {
-                    console.log(`No subscriptions found for route ${vehicle.routeId}`);
-                    return;
-                }
-
-                await this._processVehicleSubscriptions(
-                    vehicle,
-                    routeSubscriptions,
-                    userMap,
-                    calgaryDateForLogic, // Pass Calgary-adjusted time for consistency
-                    subscriptionsToUpdate
-                );
-            })
-        );
-
-        console.log(`Added ${this.queueProcessor.notificationQueue.length} notifications to queue`);
-        console.log(`Need to update ${subscriptionsToUpdate.size} subscriptions`);
-
-        // Now update all subscriptions in sequence to avoid parallel save errors
-        for (const [id, data] of subscriptionsToUpdate.entries()) {
-            try {
-                const { subscription, lastNotifiedAt, notificationCount } = data;
-                subscription.lastNotifiedAt = lastNotifiedAt;
-                subscription.notificationCount = notificationCount;
-                await subscription.save();
-                console.log(`Updated subscription ${id}`);
-            } catch (error) {
-                console.error(`Error updating subscription ${id}:`, error);
-            }
-        }
-
-        // Process the notification queue if there are any notifications
-        if (this.queueProcessor.notificationQueue.length > 0) {
-            console.log(`Processing ${this.queueProcessor.notificationQueue.length} notifications`);
-            await this.queueProcessor.processQueue();
-        } else {
-            console.log('No notifications to process');
-        }
+      // Process the notification queue if there are any notifications
+      if (this.queueProcessor.notificationQueue.length > 0) {
+        console.log(`Processing ${this.queueProcessor.notificationQueue.length} notifications`);
+        await this.queueProcessor.processQueue();
+      } else {
+        console.log('No notifications to process');
+      }
     } catch (error) {
-        console.error("Error processing vehicle locations:", error);
+      console.error("Error processing vehicle locations:", error);
     }
-}
+  }
 
   // Helper method to process subscriptions for a vehicle
   async _processVehicleSubscriptions(vehicle, routeSubscriptions, userMap, now, subscriptionsToUpdate) {
